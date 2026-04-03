@@ -8,7 +8,7 @@ public class MilkTypeResponseDTO {
 
     private Long id;
     private String name;
-    private String animal;
+   // private String animal;
     private Integer volumeMl;
     private BigDecimal pricePerUnit;
     private Boolean active;

@@ -55,7 +55,7 @@ public class CustomerDeliveryService {
         delivery.setCustomerName(customer.getCustomerName());
         delivery.setDeliveryPersonName(deliveryPerson.getUsername());
         delivery.setMilkTypeName(milkType.getName());
-        delivery.setAnimal(milkType.getAnimal());
+       // delivery.setAnimal(milkType.getAnimal());
         delivery.setVolumeMl(milkType.getVolumeMl());
         delivery.setUnitPriceSnapshot(milkType.getPricePerUnit());
 
@@ -168,5 +168,9 @@ public class CustomerDeliveryService {
     // Entity → DTO using ModelMapper
     private CustomerDeliveryResponseDTO toDTO(CustomerDelivery delivery) {
         return modelMapper.map(delivery, CustomerDeliveryResponseDTO.class);
+    }
+
+    public List<CustomerDeliveryResponseDTO> getDeliveries(String name, LocalDate date) {
+        return deliveryRepo.findByFilters(name, date);
     }
 }

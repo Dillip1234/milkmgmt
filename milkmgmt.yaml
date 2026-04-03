@@ -1,0 +1,977 @@
+openapi: 3.0.3
+info:
+  title: Milk Management API
+  description: |
+    REST API for the Milk Management System (WOM MilkMgmt).
+    Handles authentication, customer management, delivery tracking, milk types, and order processing.
+  version: 1.0.0
+  contact:
+    name: WOM MilkMgmt
+
+servers:
+  - url: http://localhost:8080
+    description: Local Development Server
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Auth
+    description: Authentication & user registration
+  - name: Users
+    description: User management (Admin only)
+  - name: Customers
+    description: Customer CRUD operations
+  - name: Deliveries
+    description: Customer delivery schedule management
+  - name: Milk Types
+    description: Milk product type management
+  - name: Orders
+    description: Milk delivery order management
+  - name: Master
+    description: Master/reference data
+  - name: Demo
+    description: Role-based access demo endpoints
+
+paths:
+
+  # ─── AUTH ────────────────────────────────────────────────────────────────────
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and obtain JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: john_doe
+              password: secret123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              username: jane_doe
+              password: secret456
+              email: jane@example.com
+              roles: [USER]
+      responses:
+        '200':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: User registered successfully
+        '403':
+          description: Access denied – Admin role required
+
+  /api/auth/generate-hash:
+    get:
+      tags: [Auth]
+      summary: Generate BCrypt hash for a password (Admin only)
+      parameters:
+        - name: password
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Plain-text password to hash
+      responses:
+        '200':
+          description: BCrypt hash string
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: $2a$10$...hashedvalue...
+        '403':
+          description: Access denied – Admin role required
+
+  /api/auth/verify-hash:
+    get:
+      tags: [Auth]
+      summary: Verify a password against a BCrypt hash (Admin only)
+      parameters:
+        - name: password
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: hash
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Match result
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "✅ Password matches!"
+        '403':
+          description: Access denied – Admin role required
+
+  # ─── USERS ───────────────────────────────────────────────────────────────────
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: Get all users (Admin only)
+      responses:
+        '200':
+          description: List of users fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WrappedDataResponse'
+        '403':
+          description: Access denied
+
+  /api/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by ID (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: User fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WrappedDataResponse'
+        '404':
+          description: User not found
+
+    put:
+      tags: [Users]
+      summary: Update user by ID (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WrappedDataResponse'
+        '404':
+          description: User not found
+
+    delete:
+      tags: [Users]
+      summary: Delete user by ID (Admin only)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimpleMessageResponse'
+        '404':
+          description: User not found
+
+  # ─── CUSTOMERS ───────────────────────────────────────────────────────────────
+
+  /api/customers/register:
+    post:
+      tags: [Customers]
+      summary: Register a new customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRequestDTO'
+      responses:
+        '201':
+          description: Customer created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponseDTO'
+
+  /api/customers/{id}:
+    get:
+      tags: [Customers]
+      summary: Get customer by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Customer found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponseDTO'
+        '404':
+          description: Customer not found
+
+    put:
+      tags: [Customers]
+      summary: Update customer by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRequestDTO'
+      responses:
+        '200':
+          description: Customer updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponseDTO'
+        '404':
+          description: Customer not found
+
+    delete:
+      tags: [Customers]
+      summary: Soft-delete customer by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Customer deleted (no content)
+        '404':
+          description: Customer not found
+
+  /api/customers/delivery-person/{deliveryPersonId}:
+    get:
+      tags: [Customers]
+      summary: Get customers assigned to a delivery person
+      parameters:
+        - name: deliveryPersonId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID of the delivery person
+      responses:
+        '200':
+          description: List of customers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerResponseDTO'
+
+  # ─── DELIVERIES ──────────────────────────────────────────────────────────────
+
+  /api/deliveries/register:
+    post:
+      tags: [Deliveries]
+      summary: Register a new customer delivery schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerDeliveryRequestDTO'
+      responses:
+        '201':
+          description: Delivery created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDeliveryResponseDTO'
+
+  /api/deliveries:
+    get:
+      tags: [Deliveries]
+      summary: Get all customer deliveries
+      responses:
+        '200':
+          description: List of deliveries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerDeliveryResponseDTO'
+
+  /api/deliveries/{id}:
+    get:
+      tags: [Deliveries]
+      summary: Get delivery by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Delivery record found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDeliveryResponseDTO'
+        '404':
+          description: Delivery not found
+
+    put:
+      tags: [Deliveries]
+      summary: Update delivery by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerDeliveryRequestDTO'
+      responses:
+        '200':
+          description: Delivery updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDeliveryResponseDTO'
+
+    delete:
+      tags: [Deliveries]
+      summary: Delete delivery by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Delivery deleted (no content)
+
+  # ─── MILK TYPES ──────────────────────────────────────────────────────────────
+
+  /api/milk-types/register:
+    post:
+      tags: [Milk Types]
+      summary: Create a new milk type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MilkTypeRequestDTO'
+      responses:
+        '201':
+          description: Milk type created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilkTypeResponseDTO'
+
+  /api/milk-types:
+    get:
+      tags: [Milk Types]
+      summary: Get all active milk types
+      responses:
+        '200':
+          description: Active milk types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MilkTypeResponseDTO'
+
+  /api/milk-types/all:
+    get:
+      tags: [Milk Types]
+      summary: Get all milk types including inactive
+      responses:
+        '200':
+          description: All milk types (active + inactive)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MilkTypeResponseDTO'
+
+  /api/milk-types/{id}:
+    get:
+      tags: [Milk Types]
+      summary: Get milk type by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Milk type found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilkTypeResponseDTO'
+        '404':
+          description: Milk type not found
+
+    put:
+      tags: [Milk Types]
+      summary: Update milk type by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MilkTypeRequestDTO'
+      responses:
+        '200':
+          description: Milk type updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilkTypeResponseDTO'
+
+    delete:
+      tags: [Milk Types]
+      summary: Delete milk type by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Milk type deleted (no content)
+
+  # ─── ORDERS ──────────────────────────────────────────────────────────────────
+
+  /api/orders:
+    post:
+      tags: [Orders]
+      summary: Create a new milk delivery order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MilkDeliveryOrderDTO'
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilkDeliveryOrder'
+
+    get:
+      tags: [Orders]
+      summary: Get all milk delivery orders
+      responses:
+        '200':
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MilkDeliveryOrder'
+
+  /api/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Get order by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Order found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilkDeliveryOrder'
+        '404':
+          description: Order not found
+
+    put:
+      tags: [Orders]
+      summary: Update order by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MilkDeliveryOrderDTO'
+      responses:
+        '200':
+          description: Order updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MilkDeliveryOrder'
+
+    delete:
+      tags: [Orders]
+      summary: Delete order by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Order deleted (no content)
+
+  # ─── MASTER ──────────────────────────────────────────────────────────────────
+
+  /master/master-data:
+    get:
+      tags: [Master]
+      summary: Get all master/reference data
+      responses:
+        '200':
+          description: Master data response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasterDataResponse'
+
+  # ─── DEMO ────────────────────────────────────────────────────────────────────
+
+  /api/user/hello:
+    get:
+      tags: [Demo]
+      summary: Hello endpoint for USER role
+      responses:
+        '200':
+          description: Greeting for user
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Hello, User!
+        '403':
+          description: Access denied
+
+  /api/admin/dashboard:
+    get:
+      tags: [Demo]
+      summary: Dashboard for ADMIN role
+      responses:
+        '200':
+          description: Admin welcome message
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Welcome, Admin!
+        '403':
+          description: Access denied
+
+  /api/mod/panel:
+    get:
+      tags: [Demo]
+      summary: Panel for ADMIN or MODERATOR role
+      responses:
+        '200':
+          description: Moderator panel message
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Moderator Panel
+        '403':
+          description: Access denied
+
+# ─── COMPONENTS ────────────────────────────────────────────────────────────────
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Paste your JWT token (obtained from /api/auth/login) here"
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Resource ID
+
+  schemas:
+
+    # Auth
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: john_doe
+        password:
+          type: string
+          format: password
+          example: secret123
+
+    RegisterRequest:
+      type: object
+      required: [username, password, email]
+      properties:
+        username:
+          type: string
+          example: jane_doe
+        password:
+          type: string
+          format: password
+          example: secret456
+        email:
+          type: string
+          format: email
+          example: jane@example.com
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [USER, ADMIN, MODERATOR]
+          example: [USER]
+
+    AuthResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: Login successful
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiJ9...
+        username:
+          type: string
+          example: john_doe
+        email:
+          type: string
+          example: john@example.com
+        roles:
+          type: array
+          items:
+            type: string
+          example: [ROLE_USER]
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-01-01T10:00:00"
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          example: new_username
+        email:
+          type: string
+          format: email
+          example: new@example.com
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [USER, ADMIN, MODERATOR]
+
+    # Customer
+    CustomerRequestDTO:
+      type: object
+      required: [name, phone, address]
+      properties:
+        name:
+          type: string
+          example: Ramesh Kumar
+        phone:
+          type: string
+          example: "9876543210"
+        address:
+          type: string
+          example: "12, MG Road, Kolkata"
+        deliveryPersonId:
+          type: integer
+          format: int64
+          example: 3
+        milkTypeId:
+          type: integer
+          format: int64
+          example: 1
+        quantityLitres:
+          type: number
+          format: double
+          example: 1.5
+
+    CustomerResponseDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 10
+        name:
+          type: string
+          example: Ramesh Kumar
+        phone:
+          type: string
+          example: "9876543210"
+        address:
+          type: string
+          example: "12, MG Road, Kolkata"
+        deliveryPersonId:
+          type: integer
+          format: int64
+          example: 3
+        milkTypeId:
+          type: integer
+          format: int64
+          example: 1
+        quantityLitres:
+          type: number
+          format: double
+          example: 1.5
+        active:
+          type: boolean
+          example: true
+
+    # Customer Delivery
+    CustomerDeliveryRequestDTO:
+      type: object
+      required: [customerId, deliveryDate, quantityLitres]
+      properties:
+        customerId:
+          type: integer
+          format: int64
+          example: 10
+        deliveryDate:
+          type: string
+          format: date
+          example: "2025-06-15"
+        quantityLitres:
+          type: number
+          format: double
+          example: 1.5
+        milkTypeId:
+          type: integer
+          format: int64
+          example: 1
+        delivered:
+          type: boolean
+          example: false
+
+    CustomerDeliveryResponseDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 55
+        customerId:
+          type: integer
+          format: int64
+          example: 10
+        customerName:
+          type: string
+          example: Ramesh Kumar
+        deliveryDate:
+          type: string
+          format: date
+          example: "2025-06-15"
+        quantityLitres:
+          type: number
+          format: double
+          example: 1.5
+        milkTypeName:
+          type: string
+          example: Full Cream
+        delivered:
+          type: boolean
+          example: false
+
+    # Milk Type
+    MilkTypeRequestDTO:
+      type: object
+      required: [name, pricePerLitre]
+      properties:
+        name:
+          type: string
+          example: Full Cream
+        description:
+          type: string
+          example: Rich and creamy full-fat milk
+        pricePerLitre:
+          type: number
+          format: double
+          example: 65.00
+
+    MilkTypeResponseDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: Full Cream
+        description:
+          type: string
+          example: Rich and creamy full-fat milk
+        pricePerLitre:
+          type: number
+          format: double
+          example: 65.00
+        active:
+          type: boolean
+          example: true
+
+    # Order
+    MilkDeliveryOrderDTO:
+      type: object
+      required: [customerId, milkTypeId, quantityLitres, orderDate]
+      properties:
+        customerId:
+          type: integer
+          format: int64
+          example: 10
+        milkTypeId:
+          type: integer
+          format: int64
+          example: 1
+        quantityLitres:
+          type: number
+          format: double
+          example: 2.0
+        orderDate:
+          type: string
+          format: date
+          example: "2025-06-15"
+        notes:
+          type: string
+          example: Leave at door
+
+    MilkDeliveryOrder:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 100
+        customerId:
+          type: integer
+          format: int64
+          example: 10
+        milkTypeId:
+          type: integer
+          format: int64
+          example: 1
+        quantityLitres:
+          type: number
+          format: double
+          example: 2.0
+        orderDate:
+          type: string
+          format: date
+          example: "2025-06-15"
+        totalAmount:
+          type: number
+          format: double
+          example: 130.00
+        notes:
+          type: string
+          example: Leave at door
+
+    # Master
+    MasterDataResponse:
+      type: object
+      description: Aggregated reference/lookup data
+      properties:
+        milkTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/MilkTypeResponseDTO'
+        roles:
+          type: array
+          items:
+            type: string
+          example: [USER, ADMIN, MODERATOR]
+
+    # Utility
+    WrappedDataResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: Data fetched successfully
+        data:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+    SimpleMessageResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: Operation successful
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 401
+        error:
+          type: string
+          example: Unauthorized
+        message:
+          type: string
+          example: Bad credentials
+        timestamp:
+          type: string
+          format: date-time

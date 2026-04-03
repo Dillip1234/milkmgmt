@@ -4,6 +4,7 @@ import com.wom.milkmgmt.entity.MilkDeliveryOrder;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Repository
@@ -15,4 +16,6 @@ public interface MilkDeliveryOrderRepository
 
     // find all orders by status
     List<MilkDeliveryOrder> findByStatus(String status);
+
+    List<MilkDeliveryOrder> findByDeliveryPersonIdAndOrderDate(Long deliveryPersonId, LocalDate orderDate);
 }

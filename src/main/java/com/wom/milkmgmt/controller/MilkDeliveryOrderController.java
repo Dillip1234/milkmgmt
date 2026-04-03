@@ -4,10 +4,12 @@ import com.wom.milkmgmt.dto.MilkDeliveryOrderDTO;
 import com.wom.milkmgmt.entity.MilkDeliveryOrder;
 import com.wom.milkmgmt.service.MilkDeliveryOrderService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -17,7 +19,7 @@ public class MilkDeliveryOrderController {
 
     private final MilkDeliveryOrderService orderService;
 
-    @PostMapping
+    @PostMapping("/register")
     public ResponseEntity<MilkDeliveryOrder> create(
             @RequestBody MilkDeliveryOrderDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -46,4 +48,13 @@ public class MilkDeliveryOrderController {
         orderService.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+//    @GetMapping
+//    public ResponseEntity<List<MilkDeliveryOrder>> getOrders(
+//            @RequestParam Long deliveryPersonId,
+//            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate orderDate) {
+//
+//        List<MilkDeliveryOrder> orders = orderService.getOrdersByPersonAndDate(deliveryPersonId, orderDate);
+//        return ResponseEntity.ok(orders);
+//    }
 }

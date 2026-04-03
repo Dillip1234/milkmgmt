@@ -95,4 +95,8 @@ public class MilkDeliveryOrderService {
         }
         orderRepository.deleteById(id);
     }
+
+    public List<MilkDeliveryOrder> getOrdersByPersonAndDate(Long deliveryPersonId, LocalDate orderDate) {
+        return orderRepository.findByDeliveryPersonIdAndOrderDate(deliveryPersonId, orderDate);
+    }
 }

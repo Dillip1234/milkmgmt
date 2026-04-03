@@ -89,11 +89,12 @@
                 <scope>runtime</scope>
             </dependency>
 
-            <dependency>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok</artifactId>
-                <optional>true</optional>
-            </dependency>
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<version>1.18.30</version> <!-- or whatever version you need -->
+			<scope>provided</scope>    <!-- 'provided' is recommended for Lombok -->
+		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

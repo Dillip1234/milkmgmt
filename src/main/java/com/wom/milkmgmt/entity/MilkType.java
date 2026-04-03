@@ -16,8 +16,8 @@ public class MilkType {
     @Column(nullable = false, length = 100)
     private String name;
 
-    @Column(nullable = false, length = 50)
-    private String animal;
+//    @Column(nullable = true, length = 50)
+//    private String animal;
 
     @Column(name = "volume_ml", nullable = false)
     private Integer volumeMl;

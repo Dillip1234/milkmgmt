@@ -28,7 +28,7 @@ public class MilkTypeService {
 
         MilkType milkType = MilkType.builder()
                 .name(dto.getName())
-                .animal(dto.getAnimal())
+               // .animal(dto.getAnimal())
                 .volumeMl(dto.getVolumeMl())
                 .pricePerUnit(dto.getPricePerUnit())
                 .active(true)
@@ -49,7 +49,7 @@ public class MilkTypeService {
         }
 
         milkType.setName(dto.getName());
-        milkType.setAnimal(dto.getAnimal());
+       // milkType.setAnimal(dto.getAnimal());
         milkType.setVolumeMl(dto.getVolumeMl());
         milkType.setPricePerUnit(dto.getPricePerUnit());
 
@@ -96,7 +96,7 @@ public class MilkTypeService {
         return MilkTypeResponseDTO.builder()
                 .id(m.getId())
                 .name(m.getName())
-                .animal(m.getAnimal())
+                //.animal(m.getAnimal())
                 .volumeMl(m.getVolumeMl())
                 .pricePerUnit(m.getPricePerUnit())
                 .active(m.getActive())
