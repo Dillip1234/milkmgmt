@@ -55,4 +55,9 @@ public class CustomerController {
         return ResponseEntity.ok(
                 customerService.getCustomersByDeliveryPerson(deliveryPersonId));
     }
+
+    @GetMapping
+    public ResponseEntity<List<CustomerResponseDTO>> getAllCustomers() {
+        return ResponseEntity.ok(customerService.getAllCustomers());
+    }
 }

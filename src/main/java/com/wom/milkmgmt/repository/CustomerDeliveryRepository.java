@@ -64,4 +64,6 @@ public interface CustomerDeliveryRepository extends JpaRepository<CustomerDelive
     List<CustomerDeliveryResponseDTO> findByFilters(
             @Param("deliveryPersonName") String deliveryPersonName,
             @Param("deliveryDate") LocalDate deliveryDate);
+
+
 }

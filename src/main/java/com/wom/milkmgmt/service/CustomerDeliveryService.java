@@ -2,12 +2,11 @@ package com.wom.milkmgmt.service;
 
 import com.wom.milkmgmt.dto.CustomerDeliveryRequestDTO;
 import com.wom.milkmgmt.dto.CustomerDeliveryResponseDTO;
-import com.wom.milkmgmt.entity.Customer;
-import com.wom.milkmgmt.entity.CustomerDelivery;
-import com.wom.milkmgmt.entity.MilkType;
-import com.wom.milkmgmt.entity.User;
+import com.wom.milkmgmt.dto.DeliverySubmitRequest;
+import com.wom.milkmgmt.entity.*;
 import com.wom.milkmgmt.repository.CustomerDeliveryRepository;
 import com.wom.milkmgmt.repository.CustomerRepository;
+import com.wom.milkmgmt.repository.MilkDeliveryOrderRepository;
 import com.wom.milkmgmt.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -16,7 +15,9 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +27,7 @@ public class CustomerDeliveryService {
     private final CustomerRepository         customerRepo;
     private final UserRepository             userRepo;
     private final ModelMapper                modelMapper;
+    private final MilkDeliveryOrderRepository milkDeliveryOrderRepository;
 
     // ─── CREATE ────────────────────────────────────────────────────────────────
 
@@ -173,4 +175,60 @@ public class CustomerDeliveryService {
     public List<CustomerDeliveryResponseDTO> getDeliveries(String name, LocalDate date) {
         return deliveryRepo.findByFilters(name, date);
     }
+
+    public void submitDeliveries(DeliverySubmitRequest request) {
+        Long deliveryPersonId = request.getDeliveryPersonId();
+        LocalDate deliveryDate = request.getDeliveryDate();
+
+        // Step 1: Update each customer_delivery record
+        for (DeliverySubmitRequest.CustomerDeliveryItem item : request.getDeliveries()) {
+            CustomerDelivery cd = deliveryRepo.findById(item.getCustomerDeliveryId())
+                    .orElseThrow(() -> new RuntimeException("CustomerDelivery not found: " + item.getCustomerDeliveryId()));
+
+            cd.setDeliveredQuantity(item.getDeliveredQuantity());
+            cd.setDeliveryDate(deliveryDate);
+            cd.setTotalPrice(cd.getUnitPriceSnapshot().multiply(BigDecimal.valueOf(item.getDeliveredQuantity())));
+
+            // Set status
+            if (item.getDeliveredQuantity() == 0) {
+                cd.setStatus("missed");
+            } else if (item.getDeliveredQuantity() < cd.getAskedQuantity()) {
+                cd.setStatus("partial");
+            } else {
+                cd.setStatus("delivered");
+            }
+
+            deliveryRepo.save(cd);
+        }
+
+        // Step 2: Aggregate delivered quantity per milk_type for this delivery person
+        Map<String, Integer> milkTypeTotalDelivered = new HashMap<>();
+        List<CustomerDelivery> allDeliveries = deliveryRepo
+                .findByDeliveryPersonIdAndDeliveryDate(deliveryPersonId, deliveryDate);
+
+        for (CustomerDelivery cd : allDeliveries) {
+            milkTypeTotalDelivered.merge(cd.getMilkTypeName(), cd.getDeliveredQuantity(), Integer::sum);
+        }
+
+        // Step 3: Update milk_delivery_orders asked_quantity per milk_type
+        List<MilkDeliveryOrder> orders = milkDeliveryOrderRepository
+                .findByDeliveryPersonIdAndOrderDate(deliveryPersonId, deliveryDate);
+
+        if (orders.isEmpty()) {
+            // order_date does not exist — update delivery_date to order_date logic handled at creation
+            // just skip or log
+            return;
+        }
+
+        for (MilkDeliveryOrder order : orders) {
+            String milkTypeName = order.getMilkType().getName();
+            Integer totalDelivered = milkTypeTotalDelivered.getOrDefault(milkTypeName, 0);
+
+            order.setAskedQuantity(totalDelivered > 0 ? totalDelivered : order.getAskedQuantity());
+            order.setTotalPrice(order.getUnitPriceSnapshot().multiply(BigDecimal.valueOf(order.getAskedQuantity())));
+
+            milkDeliveryOrderRepository.save(order);
+        }
+    }
+
 }

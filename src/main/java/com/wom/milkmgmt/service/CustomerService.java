@@ -148,4 +148,28 @@ public class CustomerService {
                 .active(c.getActive())
                 .build();
     }
+
+    public List<CustomerResponseDTO> getAllCustomers() {
+        return customerRepository.findAll()
+                .stream()
+                .map(this::mapToResponseDTO)
+                .collect(Collectors.toList());
+    }
+    private CustomerResponseDTO mapToResponseDTO(Customer customer) {
+        return CustomerResponseDTO.builder()
+                .id(customer.getId())
+                .customerName(customer.getCustomerName())
+                .mobileNumber(customer.getMobileNumber())
+                .address(customer.getAddress())
+                .districtId(customer.getDistrict().getId())
+                .districtName(customer.getDistrict().getName())
+                .milkTypeId(customer.getMilkType().getId())
+                .milkTypeName(customer.getMilkType().getName())
+                .regularQuantity(customer.getRegularQuantity())
+                .deliveryPersonId(customer.getDeliveryPerson().getId())
+                .deliveryPersonName(customer.getDeliveryPerson().getUsername())
+                .createdAt(customer.getCreatedAt())
+                .active(customer.getActive())
+                .build();
+    }
 }

@@ -2,6 +2,7 @@ package com.wom.milkmgmt.controller;
 
 import com.wom.milkmgmt.dto.CustomerDeliveryRequestDTO;
 import com.wom.milkmgmt.dto.CustomerDeliveryResponseDTO;
+import com.wom.milkmgmt.dto.DeliverySubmitRequest;
 import com.wom.milkmgmt.service.CustomerDeliveryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -18,6 +19,7 @@ import java.util.List;
 public class CustomerDeliveryController {
 
     private final CustomerDeliveryService service;
+
 
     @PostMapping("/register")
     public ResponseEntity<CustomerDeliveryResponseDTO> create(
@@ -54,6 +56,11 @@ public class CustomerDeliveryController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate deliveryDate) {
 
         return service.getDeliveries(deliveryPersonName, deliveryDate);
+    }
+    @PutMapping("/api/deliveries/submit")
+    public ResponseEntity<String> submitDeliveries(@RequestBody DeliverySubmitRequest request) {
+        service.submitDeliveries(request);
+        return ResponseEntity.ok("Deliveries updated successfully");
     }
 }
 

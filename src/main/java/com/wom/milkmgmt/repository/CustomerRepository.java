@@ -24,4 +24,9 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     boolean existsByMobileNumberAndIdNot(String mobileNumber, Long id);
 
     boolean existsByMobileNumber(String mobileNumber);
+    @Query("SELECT c FROM Customer c " +
+            "JOIN FETCH c.district " +
+            "JOIN FETCH c.milkType " +
+            "JOIN FETCH c.deliveryPerson")
+    List<Customer> findAllWithDetails();
 }
