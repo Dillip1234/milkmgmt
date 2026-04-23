@@ -57,10 +57,16 @@ public class CustomerDeliveryController {
 
         return service.getDeliveries(deliveryPersonName, deliveryDate);
     }
-    @PutMapping("/api/deliveries/submit")
+    @PutMapping("/submit")
     public ResponseEntity<String> submitDeliveries(@RequestBody DeliverySubmitRequest request) {
         service.submitDeliveries(request);
         return ResponseEntity.ok("Deliveries updated successfully");
+    }
+
+    @PutMapping("/save")
+    public ResponseEntity<String> saveDeliveries(@RequestBody DeliverySubmitRequest request) {
+        service.saveDeliveries(request);
+        return ResponseEntity.ok("Deliveries saved successfully");
     }
 }
 

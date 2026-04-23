@@ -18,4 +18,7 @@ public interface MilkDeliveryOrderRepository
     List<MilkDeliveryOrder> findByStatus(String status);
 
     List<MilkDeliveryOrder> findByDeliveryPersonIdAndOrderDate(Long deliveryPersonId, LocalDate orderDate);
+
+    // find latest order by deliveryPersonId and milkTypeId
+    List<MilkDeliveryOrder> findByDeliveryPersonIdAndMilkTypeId(Long deliveryPersonId, Long milkTypeId);
 }

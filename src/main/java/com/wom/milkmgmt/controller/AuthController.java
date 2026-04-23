@@ -58,6 +58,7 @@ public class AuthController {
                 .status(200)
                 .message("Login successful")
                 .token(token)
+                .id(user.getId().toString())
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .roles(roles)

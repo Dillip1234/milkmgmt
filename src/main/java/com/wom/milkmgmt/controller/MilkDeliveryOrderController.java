@@ -1,6 +1,9 @@
 package com.wom.milkmgmt.controller;
 
+import com.wom.milkmgmt.dto.BulkQuantityUpdateDTO;
+import com.wom.milkmgmt.dto.DeliveryPersonDTO;
 import com.wom.milkmgmt.dto.MilkDeliveryOrderDTO;
+import com.wom.milkmgmt.dto.MilkDeliveryOrderDetailDTO;
 import com.wom.milkmgmt.entity.MilkDeliveryOrder;
 import com.wom.milkmgmt.service.MilkDeliveryOrderService;
 import lombok.RequiredArgsConstructor;
@@ -43,10 +46,28 @@ public class MilkDeliveryOrderController {
         return ResponseEntity.ok(orderService.update(id, dto));
     }
 
+    @PutMapping("/bulk-update-quantity")
+    public ResponseEntity<List<MilkDeliveryOrder>> bulkUpdateQuantity(
+            @RequestBody List<BulkQuantityUpdateDTO> updates) {
+        return ResponseEntity.ok(orderService.bulkUpdateQuantity(updates));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         orderService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/delivery-person")
+    public ResponseEntity<List<DeliveryPersonDTO>> getAllDeliveryPersons() {
+        return ResponseEntity.ok(orderService.getAllDeliveryPersons());
+    }
+
+    @GetMapping("/delivery-person/{deliveryPersonId}")
+    public ResponseEntity<List<MilkDeliveryOrderDetailDTO>> getOrdersByDeliveryPerson(
+            @PathVariable Long deliveryPersonId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate orderDate) {
+        return ResponseEntity.ok(orderService.getOrdersByDeliveryPerson(deliveryPersonId, orderDate));
     }
 
 //    @GetMapping
