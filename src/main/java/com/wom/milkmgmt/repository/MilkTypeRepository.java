@@ -16,4 +16,6 @@ public interface MilkTypeRepository extends JpaRepository<MilkType, Long> {
     // Check duplicate name + volume (excluding self on update)
     boolean existsByNameAndVolumeMlAndIdNot(String name, Integer volumeMl, Long id);
 
+    // Find milk type by name
+    java.util.Optional<MilkType> findByName(String name);
 }

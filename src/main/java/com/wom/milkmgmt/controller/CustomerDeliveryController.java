@@ -52,10 +52,10 @@ public class CustomerDeliveryController {
 
     @GetMapping
     public List<CustomerDeliveryResponseDTO> getDeliveries(
-            @RequestParam(required = false) String deliveryPersonName,
+            @RequestParam(required = false) Long deliveryPersonId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate deliveryDate) {
 
-        return service.getDeliveries(deliveryPersonName, deliveryDate);
+        return service.getDeliveriesByPersonIdAndDate(deliveryPersonId, deliveryDate);
     }
     @PutMapping("/submit")
     public ResponseEntity<String> submitDeliveries(@RequestBody DeliverySubmitRequest request) {

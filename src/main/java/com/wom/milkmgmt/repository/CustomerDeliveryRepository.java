@@ -13,6 +13,9 @@ import java.util.List;
 @Repository
 public interface CustomerDeliveryRepository extends JpaRepository<CustomerDelivery, Long> {
 
+    // All deliveries for a specific customer by delivery person
+    List<CustomerDelivery> findByCustomerIdAndDeliveryPersonId(Long customerId, Long deliveryPersonId);
+
     // All deliveries for a specific customer
     List<CustomerDelivery> findByCustomerId(Long customerId);
 
@@ -45,10 +48,11 @@ public interface CustomerDeliveryRepository extends JpaRepository<CustomerDelive
             @Param("from") LocalDate from,
             @Param("to") LocalDate to);
 
-    // All deliveries between two dates
+    // Filter by deliveryPersonId and/or deliveryDate
     @Query("SELECT NEW com.wom.milkmgmt.dto.CustomerDeliveryResponseDTO(" +
             "cd.id, " +
             "cd.customerName, " +
+            "cd.deliveryPerson.id, " +
             "cd.deliveryPersonName, " +
             "cd.milkTypeName, " +
             "cd.volumeMl, " +
@@ -63,6 +67,26 @@ public interface CustomerDeliveryRepository extends JpaRepository<CustomerDelive
             "AND (cast(:deliveryDate as localdate) IS NULL OR cd.deliveryDate = :deliveryDate)")
     List<CustomerDeliveryResponseDTO> findByFilters(
             @Param("deliveryPersonName") String deliveryPersonName,
+            @Param("deliveryDate") LocalDate deliveryDate);
+
+    @Query("SELECT NEW com.wom.milkmgmt.dto.CustomerDeliveryResponseDTO(" +
+            "cd.id, " +
+            "cd.customerName, " +
+            "cd.deliveryPerson.id, " +
+            "cd.deliveryPersonName, " +
+            "cd.milkTypeName, " +
+            "cd.volumeMl, " +
+            "cd.askedQuantity, " +
+            "cd.deliveredQuantity, " +
+            "cd.unitPriceSnapshot, " +
+            "cd.totalPrice, " +
+            "cd.deliveryDate, " +
+            "cd.status) " +
+            "FROM CustomerDelivery cd " +
+            "WHERE (cast(:deliveryPersonId as long) IS NULL OR cd.deliveryPerson.id = :deliveryPersonId) " +
+            "AND (cast(:deliveryDate as localdate) IS NULL OR cd.deliveryDate = :deliveryDate)")
+    List<CustomerDeliveryResponseDTO> findByDeliveryPersonIdAndDateFilter(
+            @Param("deliveryPersonId") Long deliveryPersonId,
             @Param("deliveryDate") LocalDate deliveryDate);
 
 

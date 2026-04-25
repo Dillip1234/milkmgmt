@@ -177,6 +177,7 @@ public class MilkDeliveryOrderService {
             MilkDeliveryOrder order = orders.get(orders.size() - 1);
 
             order.setAskedQuantity(update.getAskedQuantity());
+            order.setOrderDate(update.getOrderDate() != null ? update.getOrderDate() : order.getOrderDate());
             order.setTotalPrice(
                     order.getUnitPriceSnapshot()
                             .multiply(BigDecimal.valueOf(update.getAskedQuantity()))

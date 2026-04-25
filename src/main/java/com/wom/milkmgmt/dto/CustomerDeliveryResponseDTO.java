@@ -14,6 +14,7 @@ public class CustomerDeliveryResponseDTO {
 
     private Long id;
     private String customerName;
+    private Long deliveryPersonId;
     private String deliveryPersonName;
     private String milkTypeName;
     private Integer volumeMl;

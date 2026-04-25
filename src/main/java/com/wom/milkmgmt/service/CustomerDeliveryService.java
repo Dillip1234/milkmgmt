@@ -7,6 +7,7 @@ import com.wom.milkmgmt.entity.*;
 import com.wom.milkmgmt.repository.CustomerDeliveryRepository;
 import com.wom.milkmgmt.repository.CustomerRepository;
 import com.wom.milkmgmt.repository.MilkDeliveryOrderRepository;
+import com.wom.milkmgmt.repository.MilkTypeRepository;
 import com.wom.milkmgmt.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -16,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +30,7 @@ public class CustomerDeliveryService {
     private final UserRepository             userRepo;
     private final ModelMapper                modelMapper;
     private final MilkDeliveryOrderRepository milkDeliveryOrderRepository;
+    private final MilkTypeRepository         milkTypeRepository;
 
     // ─── CREATE ────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ public class CustomerDeliveryService {
         delivery.setCustomerName(customer.getCustomerName());
         delivery.setDeliveryPersonName(deliveryPerson.getUsername());
         delivery.setMilkTypeName(milkType.getName());
+        delivery.setMilkTypeId(milkType.getId());
        // delivery.setAnimal(milkType.getAnimal());
         delivery.setVolumeMl(milkType.getVolumeMl());
         delivery.setUnitPriceSnapshot(milkType.getPricePerUnit());
@@ -178,48 +180,106 @@ public class CustomerDeliveryService {
         return deliveryRepo.findByFilters(name, date);
     }
 
+    public List<CustomerDeliveryResponseDTO> getDeliveriesByPersonIdAndDate(Long deliveryPersonId, LocalDate date) {
+        return deliveryRepo.findByDeliveryPersonIdAndDateFilter(deliveryPersonId, date);
+    }
+
     @Transactional
     public void submitDeliveries(DeliverySubmitRequest request) {
         Long deliveryPersonId = request.getDeliveryPersonId();
         LocalDate deliveryDate = request.getDeliveryDate();
 
-        // Step 1: Update each customer_delivery row and collect saved records
-        List<CustomerDelivery> savedDeliveries = new ArrayList<>();
-
+        // Step 1: For each item in payload
+        // customerDeliveryId = customer_id in customer_deliveries
+        // Find the row by customer_id + delivery_person_id, then update delivered_quantity, status, delivery_date
         for (DeliverySubmitRequest.CustomerDeliveryItem item : request.getDeliveries()) {
-            CustomerDelivery cd = deliveryRepo.findById(item.getCustomerDeliveryId())
-                    .orElseThrow(() -> new RuntimeException(
-                            "CustomerDelivery not found: " + item.getCustomerDeliveryId()));
+
+            // find customer_deliveries row by customer_id + delivery_person_id
+            List<CustomerDelivery> cdList = deliveryRepo
+                    .findByCustomerIdAndDeliveryPersonId(item.getCustomerDeliveryId(), deliveryPersonId);
+
+            CustomerDelivery cd;
+            if (cdList.isEmpty()) {
+                // no existing row — create one from customers table
+                Customer customer = customerRepo.findById(item.getCustomerDeliveryId())
+                        .orElseThrow(() -> new RuntimeException(
+                                "Customer not found: " + item.getCustomerDeliveryId()));
+
+                User deliveryPersonUser = userRepo.findById(deliveryPersonId)
+                        .orElseThrow(() -> new RuntimeException(
+                                "Delivery person not found: " + deliveryPersonId));
+
+                MilkType milkType = customer.getMilkType();
+
+                cd = new CustomerDelivery();
+                cd.setCustomer(customer);
+                cd.setDeliveryPerson(deliveryPersonUser);
+                cd.setCustomerName(customer.getCustomerName());
+                cd.setDeliveryPersonName(deliveryPersonUser.getUsername());
+                cd.setMilkTypeName(milkType.getName());
+                cd.setMilkTypeId(milkType.getId());
+                cd.setVolumeMl(milkType.getVolumeMl());
+                cd.setUnitPriceSnapshot(milkType.getPricePerUnit());
+                cd.setAskedQuantity(customer.getRegularQuantity());
+                cd.setTotalPrice(milkType.getPricePerUnit()
+                        .multiply(BigDecimal.valueOf(customer.getRegularQuantity())));
+                cd.setCreatedAt(LocalDateTime.now());
+            } else {
+                cd = cdList.get(0);
+            }
 
             cd.setDeliveredQuantity(item.getDeliveredQuantity());
             cd.setDeliveryDate(deliveryDate);
             cd.setStatus("pending");
 
-            savedDeliveries.add(deliveryRepo.save(cd));
+            deliveryRepo.save(cd);
         }
 
-        // Step 2: Aggregate total deliveredQuantity per MilkType directly from saved records
-        Map<MilkType, Integer> milkTypeTotals = new HashMap<>();
+        // Step 2: Fetch ALL customer_deliveries for this delivery person on this delivery date
+        // and aggregate total delivered_quantity per milk_type_id
+        List<CustomerDelivery> allDeliveries = deliveryRepo
+                .findByDeliveryPersonIdAndDeliveryDate(deliveryPersonId, deliveryDate);
 
-        for (CustomerDelivery cd : savedDeliveries) {
-            // resolve MilkType from the customer FK
-            MilkType milkType = cd.getCustomer().getMilkType();
+        // key = milk_type_id, value = sum of delivered_quantity
+        Map<Long, Integer> milkTypeTotals = new HashMap<>();
+        for (CustomerDelivery cd : allDeliveries) {
+            Long milkTypeId = cd.getMilkTypeId();
+            if (milkTypeId == null) continue;
             int qty = cd.getDeliveredQuantity() != null ? cd.getDeliveredQuantity() : 0;
-            milkTypeTotals.merge(milkType, qty, Integer::sum);
+            milkTypeTotals.merge(milkTypeId, qty, Integer::sum);
         }
 
         // Step 3: Fetch delivery person entity
         User deliveryPerson = userRepo.findById(deliveryPersonId)
                 .orElseThrow(() -> new RuntimeException("Delivery person not found: " + deliveryPersonId));
 
-        // Step 4: Save one MilkDeliveryOrder row per milk type — skip if total is 0
-        for (Map.Entry<MilkType, Integer> entry : milkTypeTotals.entrySet()) {
-            MilkType milkType = entry.getKey();
+        // Step 4: Insert or update milk_delivery_orders — one row per deliveryPerson + milkType
+        for (Map.Entry<Long, Integer> entry : milkTypeTotals.entrySet()) {
+            Long milkTypeId = entry.getKey();
             Integer totalQuantity = entry.getValue();
 
-            if (totalQuantity <= 0) continue; // skip — would violate asked_quantity > 0 constraint
+            if (totalQuantity <= 0) continue; // skip — violates asked_quantity > 0 constraint
 
-            MilkDeliveryOrder order = new MilkDeliveryOrder();
+            MilkType milkType = milkTypeRepository.findById(milkTypeId)
+                    .orElseThrow(() -> new RuntimeException("MilkType not found: " + milkTypeId));
+
+            // find existing rows for this deliveryPerson + milkType (ordered by id DESC)
+            List<MilkDeliveryOrder> existingOrders = milkDeliveryOrderRepository
+                    .findByDeliveryPersonIdAndMilkTypeId(deliveryPersonId, milkTypeId);
+
+            MilkDeliveryOrder order;
+            if (existingOrders.isEmpty()) {
+                order = new MilkDeliveryOrder();
+                order.setCreatedAt(LocalDateTime.now());
+            } else {
+                // keep the latest, delete duplicates
+                order = existingOrders.get(0);
+                if (existingOrders.size() > 1) {
+                    milkDeliveryOrderRepository.deleteAll(
+                            existingOrders.subList(1, existingOrders.size()));
+                }
+            }
+
             order.setDeliveryPerson(deliveryPerson);
             order.setMilkType(milkType);
             order.setAskedQuantity(totalQuantity);
@@ -227,7 +287,6 @@ public class CustomerDeliveryService {
             order.setTotalPrice(milkType.getPricePerUnit().multiply(BigDecimal.valueOf(totalQuantity)));
             order.setOrderDate(deliveryDate);
             order.setStatus("pending");
-            order.setCreatedAt(LocalDateTime.now());
 
             milkDeliveryOrderRepository.save(order);
         }

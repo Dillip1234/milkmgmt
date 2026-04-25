@@ -38,6 +38,9 @@ public class CustomerDelivery {
     @Column(name = "milk_type_name")
     private String milkTypeName;
 
+    @Column(name = "milk_type_id")
+    private Long milkTypeId;
+
     private String animal;
 
     @Column(name = "volume_ml")
