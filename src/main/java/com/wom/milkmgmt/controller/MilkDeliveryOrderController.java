@@ -34,6 +34,12 @@ public class MilkDeliveryOrderController {
         return ResponseEntity.ok(orderService.getAll());
     }
 
+    @GetMapping("/by-date")
+    public ResponseEntity<List<MilkDeliveryOrderDetailDTO>> getOrdersByDate(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate orderDate) {
+        return ResponseEntity.ok(orderService.getOrdersByDate(orderDate));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<MilkDeliveryOrder> getById(@PathVariable Long id) {
         return ResponseEntity.ok(orderService.getById(id));

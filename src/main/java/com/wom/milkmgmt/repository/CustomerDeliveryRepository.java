@@ -51,11 +51,14 @@ public interface CustomerDeliveryRepository extends JpaRepository<CustomerDelive
     // Filter by deliveryPersonId and/or deliveryDate
     @Query("SELECT NEW com.wom.milkmgmt.dto.CustomerDeliveryResponseDTO(" +
             "cd.id, " +
+            "cd.customer.id, " +
             "cd.customerName, " +
             "cd.deliveryPerson.id, " +
             "cd.deliveryPersonName, " +
+            "cd.milkTypeId, " +
             "cd.milkTypeName, " +
             "cd.volumeMl, " +
+            "cd.askedQuantity, " +
             "cd.askedQuantity, " +
             "cd.deliveredQuantity, " +
             "cd.unitPriceSnapshot, " +
@@ -71,11 +74,14 @@ public interface CustomerDeliveryRepository extends JpaRepository<CustomerDelive
 
     @Query("SELECT NEW com.wom.milkmgmt.dto.CustomerDeliveryResponseDTO(" +
             "cd.id, " +
+            "cd.customer.id, " +
             "cd.customerName, " +
             "cd.deliveryPerson.id, " +
             "cd.deliveryPersonName, " +
+            "cd.milkTypeId, " +
             "cd.milkTypeName, " +
             "cd.volumeMl, " +
+            "cd.askedQuantity, " +
             "cd.askedQuantity, " +
             "cd.deliveredQuantity, " +
             "cd.unitPriceSnapshot, " +

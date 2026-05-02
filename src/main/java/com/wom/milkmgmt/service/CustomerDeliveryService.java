@@ -232,6 +232,20 @@ public class CustomerDeliveryService {
             cd.setDeliveryDate(deliveryDate);
             cd.setStatus("pending");
 
+            // if milkTypeId is provided in payload and differs from current — update milk type snapshots
+            if (item.getMilkTypeId() != null) {
+                MilkType newMilkType = milkTypeRepository.findById(item.getMilkTypeId())
+                        .orElseThrow(() -> new RuntimeException(
+                                "MilkType not found: " + item.getMilkTypeId()));
+
+                cd.setMilkTypeId(newMilkType.getId());
+                cd.setMilkTypeName(newMilkType.getName());
+                cd.setVolumeMl(newMilkType.getVolumeMl());
+                cd.setUnitPriceSnapshot(newMilkType.getPricePerUnit());
+                cd.setTotalPrice(newMilkType.getPricePerUnit()
+                        .multiply(BigDecimal.valueOf(item.getDeliveredQuantity())));
+            }
+
             deliveryRepo.save(cd);
         }
 
@@ -253,7 +267,10 @@ public class CustomerDeliveryService {
         User deliveryPerson = userRepo.findById(deliveryPersonId)
                 .orElseThrow(() -> new RuntimeException("Delivery person not found: " + deliveryPersonId));
 
-        // Step 4: Insert or update milk_delivery_orders — one row per deliveryPerson + milkType
+        // Step 4: Delete ALL existing milk_delivery_orders for this deliveryPerson + date
+        // then insert fresh rows — one per milk type
+        milkDeliveryOrderRepository.deleteByDeliveryPersonIdAndOrderDate(deliveryPersonId, deliveryDate);
+
         for (Map.Entry<Long, Integer> entry : milkTypeTotals.entrySet()) {
             Long milkTypeId = entry.getKey();
             Integer totalQuantity = entry.getValue();
@@ -263,23 +280,7 @@ public class CustomerDeliveryService {
             MilkType milkType = milkTypeRepository.findById(milkTypeId)
                     .orElseThrow(() -> new RuntimeException("MilkType not found: " + milkTypeId));
 
-            // find existing rows for this deliveryPerson + milkType (ordered by id DESC)
-            List<MilkDeliveryOrder> existingOrders = milkDeliveryOrderRepository
-                    .findByDeliveryPersonIdAndMilkTypeId(deliveryPersonId, milkTypeId);
-
-            MilkDeliveryOrder order;
-            if (existingOrders.isEmpty()) {
-                order = new MilkDeliveryOrder();
-                order.setCreatedAt(LocalDateTime.now());
-            } else {
-                // keep the latest, delete duplicates
-                order = existingOrders.get(0);
-                if (existingOrders.size() > 1) {
-                    milkDeliveryOrderRepository.deleteAll(
-                            existingOrders.subList(1, existingOrders.size()));
-                }
-            }
-
+            MilkDeliveryOrder order = new MilkDeliveryOrder();
             order.setDeliveryPerson(deliveryPerson);
             order.setMilkType(milkType);
             order.setAskedQuantity(totalQuantity);
@@ -287,6 +288,7 @@ public class CustomerDeliveryService {
             order.setTotalPrice(milkType.getPricePerUnit().multiply(BigDecimal.valueOf(totalQuantity)));
             order.setOrderDate(deliveryDate);
             order.setStatus("pending");
+            order.setCreatedAt(LocalDateTime.now());
 
             milkDeliveryOrderRepository.save(order);
         }

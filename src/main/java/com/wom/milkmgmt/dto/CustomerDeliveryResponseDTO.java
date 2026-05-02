@@ -13,11 +13,14 @@ import java.time.LocalDate;
 public class CustomerDeliveryResponseDTO {
 
     private Long id;
+    private Long customerId;
     private String customerName;
     private Long deliveryPersonId;
     private String deliveryPersonName;
+    private Long milkTypeId;
     private String milkTypeName;
     private Integer volumeMl;
+    private Integer askedQuantity;
     private Integer regularQuantity;
     private Integer deliveredQuantity;
     private BigDecimal unitPriceSnapshot;

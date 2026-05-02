@@ -106,6 +106,17 @@ public class MilkDeliveryOrderService {
         return orderRepository.findByDeliveryPersonIdAndOrderDate(deliveryPersonId, orderDate);
     }
 
+    // GET ALL ORDERS BY ORDER DATE WITH DETAILED INFORMATION
+    public List<MilkDeliveryOrderDetailDTO> getOrdersByDate(LocalDate orderDate) {
+        List<MilkDeliveryOrder> orders = orderDate != null
+                ? orderRepository.findByOrderDate(orderDate)
+                : orderRepository.findAll();
+
+        return orders.stream()
+                .map(this::convertToDetailDTO)
+                .collect(Collectors.toList());
+    }
+
     // GET ALL ORDERS BY DELIVERY PERSON ID WITH OPTIONAL DATE FILTER
     public List<MilkDeliveryOrderDetailDTO> getOrdersByDeliveryPerson(Long deliveryPersonId, LocalDate orderDate) {
         List<MilkDeliveryOrder> orders = orderDate != null

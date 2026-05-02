@@ -13,7 +13,8 @@ public class DeliverySubmitRequest {
 
     @Data
     public static class CustomerDeliveryItem {
-        private Long customerDeliveryId;  // id in customer_deliveries
+        private Long customerDeliveryId;  // customer_id in customer_deliveries
         private Integer deliveredQuantity;
+        private Long milkTypeId;          // optional — if milk type changed
     }
 }
