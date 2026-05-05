@@ -302,56 +302,68 @@ public class CustomerDeliveryService {
 
         // Scenario 1: date must be today
         if (!LocalDate.now().equals(deliveryDate)) {
-            throw new RuntimeException("Date is not matching. You can only save deliveries for today's date.");
+            throw new RuntimeException(
+                    "Date is not matching. You can only save deliveries for today's date.");
         }
 
-        // Scenario 2: validate total quantity per milk type against milk_delivery_orders
-
-        // Step 2a: build a map of customerDeliveryId → deliveredQuantity from the payload
+        // Step 1: build map of customer_id → deliveredQuantity from payload
         Map<Long, Integer> payloadQuantityMap = new HashMap<>();
         for (DeliverySubmitRequest.CustomerDeliveryItem item : request.getDeliveries()) {
             payloadQuantityMap.put(item.getCustomerDeliveryId(), item.getDeliveredQuantity());
         }
 
-        // Step 2b: fetch existing customer_deliveries for this delivery person on this date
+        // Step 2: fetch ALL customer_deliveries for this delivery person on this date
         List<CustomerDelivery> existingDeliveries = deliveryRepo
                 .findByDeliveryPersonIdAndDeliveryDate(deliveryPersonId, deliveryDate);
 
-        // Step 2c: aggregate total delivered quantity per milk type name
-        Map<String, Integer> milkTypeTotalMap = new HashMap<>();
+        // Step 3: aggregate total delivered quantity per milk_type_id
+        // use payload quantity if provided, else existing delivered_quantity
+        Map<Long, Integer> milkTypeTotalMap = new HashMap<>();
         for (CustomerDelivery cd : existingDeliveries) {
-            // use payload quantity if provided, else existing delivered quantity
+            Long milkTypeId = cd.getMilkTypeId();
+            if (milkTypeId == null) continue;
+
             Integer qty = payloadQuantityMap.getOrDefault(
-                    cd.getId(),
+                    cd.getCustomer().getId(),
                     cd.getDeliveredQuantity() != null ? cd.getDeliveredQuantity() : 0
             );
-            milkTypeTotalMap.merge(cd.getMilkTypeName(), qty, Integer::sum);
+            milkTypeTotalMap.merge(milkTypeId, qty, Integer::sum);
         }
 
-        // Step 2d: fetch milk_delivery_orders for this delivery person on this date
+        // Step 4: fetch milk_delivery_orders for this delivery person on this date
         List<MilkDeliveryOrder> orders = milkDeliveryOrderRepository
                 .findByDeliveryPersonIdAndOrderDate(deliveryPersonId, deliveryDate);
 
-        // Step 2e: validate each milk type total against asked_quantity in milk_delivery_orders
+        if (orders.isEmpty()) {
+            throw new RuntimeException(
+                    "No milk delivery orders found for deliveryPersonId=" + deliveryPersonId
+                    + " and date=" + deliveryDate + ". Please run /submit first.");
+        }
+
+        // Step 5: validate each milk_type_id total against asked_quantity in milk_delivery_orders
         for (MilkDeliveryOrder order : orders) {
+            Long milkTypeId = order.getMilkType().getId();
             String milkTypeName = order.getMilkType().getName();
-            Integer totalDelivered = milkTypeTotalMap.getOrDefault(milkTypeName, 0);
+            Integer totalDelivered = milkTypeTotalMap.getOrDefault(milkTypeId, 0);
 
             if (!totalDelivered.equals(order.getAskedQuantity())) {
                 throw new RuntimeException(
-                        "Milk type quantity is not matching for '" + milkTypeName
-                        + "'. Expected: " + order.getAskedQuantity()
+                        "Quantity mismatch for milk type '" + milkTypeName
+                        + "' (id=" + milkTypeId + ")."
+                        + " Expected: " + order.getAskedQuantity()
                         + ", Got: " + totalDelivered
                 );
             }
         }
 
-        // Validation passed — update only customer_deliveries: delivered_quantity + status resolved from quantities
+        // Validation passed — update customer_deliveries: delivered_quantity + status
         for (DeliverySubmitRequest.CustomerDeliveryItem item : request.getDeliveries()) {
-            CustomerDelivery cd = deliveryRepo.findById(item.getCustomerDeliveryId())
-                    .orElseThrow(() -> new RuntimeException(
-                            "CustomerDelivery not found: " + item.getCustomerDeliveryId()));
+            List<CustomerDelivery> cdList = deliveryRepo
+                    .findByCustomerIdAndDeliveryPersonId(item.getCustomerDeliveryId(), deliveryPersonId);
 
+            if (cdList.isEmpty()) continue;
+
+            CustomerDelivery cd = cdList.get(0);
             cd.setDeliveredQuantity(item.getDeliveredQuantity());
             cd.setStatus(resolveStatus(cd.getAskedQuantity(), item.getDeliveredQuantity()));
 
