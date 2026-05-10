@@ -184,6 +184,11 @@ public class CustomerDeliveryService {
         return deliveryRepo.findByDeliveryPersonIdAndDateFilter(deliveryPersonId, date);
     }
 
+    public List<CustomerDeliveryResponseDTO> getReport(Long deliveryPersonId, LocalDate fromDate, LocalDate toDate) {
+        //log.info("Generating report for deliveryPersonId: {}, from: {}, to: {}", deliveryPersonId, fromDate, toDate);
+        return deliveryRepo.findReportByDeliveryPersonAndDateRange(deliveryPersonId, fromDate, toDate);
+    }
+
     @Transactional
     public void submitDeliveries(DeliverySubmitRequest request) {
         Long deliveryPersonId = request.getDeliveryPersonId();
@@ -191,16 +196,17 @@ public class CustomerDeliveryService {
 
         // Step 1: For each item in payload
         // customerDeliveryId = customer_id in customer_deliveries
-        // Find the row by customer_id + delivery_person_id, then update delivered_quantity, status, delivery_date
+        // Same date → update existing row | Different date → insert new row
         for (DeliverySubmitRequest.CustomerDeliveryItem item : request.getDeliveries()) {
 
-            // find customer_deliveries row by customer_id + delivery_person_id
+            // find customer_deliveries row by customer_id + delivery_person_id + delivery_date
             List<CustomerDelivery> cdList = deliveryRepo
-                    .findByCustomerIdAndDeliveryPersonId(item.getCustomerDeliveryId(), deliveryPersonId);
+                    .findByCustomerIdAndDeliveryPersonIdAndDeliveryDate(
+                            item.getCustomerDeliveryId(), deliveryPersonId, deliveryDate);
 
             CustomerDelivery cd;
             if (cdList.isEmpty()) {
-                // no existing row — create one from customers table
+                // no row for this date — create new record from customers table
                 Customer customer = customerRepo.findById(item.getCustomerDeliveryId())
                         .orElseThrow(() -> new RuntimeException(
                                 "Customer not found: " + item.getCustomerDeliveryId()));
@@ -209,7 +215,10 @@ public class CustomerDeliveryService {
                         .orElseThrow(() -> new RuntimeException(
                                 "Delivery person not found: " + deliveryPersonId));
 
-                MilkType milkType = customer.getMilkType();
+                MilkType milkType = item.getMilkTypeId() != null
+                        ? milkTypeRepository.findById(item.getMilkTypeId())
+                            .orElseThrow(() -> new RuntimeException("MilkType not found: " + item.getMilkTypeId()))
+                        : customer.getMilkType();
 
                 cd = new CustomerDelivery();
                 cd.setCustomer(customer);
@@ -224,27 +233,30 @@ public class CustomerDeliveryService {
                 cd.setTotalPrice(milkType.getPricePerUnit()
                         .multiply(BigDecimal.valueOf(customer.getRegularQuantity())));
                 cd.setCreatedAt(LocalDateTime.now());
+//                log.info("Inserting new customer_deliveries row for customerId: {}, date: {}",
+//                        item.getCustomerDeliveryId(), deliveryDate);
             } else {
+                // row exists for this date — update it
                 cd = cdList.get(0);
+//                log.info("Updating existing customer_deliveries row id: {} for customerId: {}, date: {}",
+//                        cd.getId(), item.getCustomerDeliveryId(), deliveryDate);
+
+                // update milk type if provided
+                if (item.getMilkTypeId() != null) {
+                    MilkType newMilkType = milkTypeRepository.findById(item.getMilkTypeId())
+                            .orElseThrow(() -> new RuntimeException("MilkType not found: " + item.getMilkTypeId()));
+                    cd.setMilkTypeId(newMilkType.getId());
+                    cd.setMilkTypeName(newMilkType.getName());
+                    cd.setVolumeMl(newMilkType.getVolumeMl());
+                    cd.setUnitPriceSnapshot(newMilkType.getPricePerUnit());
+                    cd.setTotalPrice(newMilkType.getPricePerUnit()
+                            .multiply(BigDecimal.valueOf(item.getDeliveredQuantity())));
+                }
             }
 
             cd.setDeliveredQuantity(item.getDeliveredQuantity());
             cd.setDeliveryDate(deliveryDate);
             cd.setStatus("pending");
-
-            // if milkTypeId is provided in payload and differs from current — update milk type snapshots
-            if (item.getMilkTypeId() != null) {
-                MilkType newMilkType = milkTypeRepository.findById(item.getMilkTypeId())
-                        .orElseThrow(() -> new RuntimeException(
-                                "MilkType not found: " + item.getMilkTypeId()));
-
-                cd.setMilkTypeId(newMilkType.getId());
-                cd.setMilkTypeName(newMilkType.getName());
-                cd.setVolumeMl(newMilkType.getVolumeMl());
-                cd.setUnitPriceSnapshot(newMilkType.getPricePerUnit());
-                cd.setTotalPrice(newMilkType.getPricePerUnit()
-                        .multiply(BigDecimal.valueOf(item.getDeliveredQuantity())));
-            }
 
             deliveryRepo.save(cd);
         }
@@ -365,7 +377,7 @@ public class CustomerDeliveryService {
 
             CustomerDelivery cd = cdList.get(0);
             cd.setDeliveredQuantity(item.getDeliveredQuantity());
-            cd.setStatus(resolveStatus(cd.getAskedQuantity(), item.getDeliveredQuantity()));
+            cd.setStatus("delivered");
 
             deliveryRepo.save(cd);
         }

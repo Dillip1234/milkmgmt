@@ -16,6 +16,10 @@ public interface CustomerDeliveryRepository extends JpaRepository<CustomerDelive
     // All deliveries for a specific customer by delivery person
     List<CustomerDelivery> findByCustomerIdAndDeliveryPersonId(Long customerId, Long deliveryPersonId);
 
+    // Find by customer + delivery person + date (for upsert by date)
+    List<CustomerDelivery> findByCustomerIdAndDeliveryPersonIdAndDeliveryDate(
+            Long customerId, Long deliveryPersonId, LocalDate deliveryDate);
+
     // All deliveries for a specific customer
     List<CustomerDelivery> findByCustomerId(Long customerId);
 
@@ -95,5 +99,30 @@ public interface CustomerDeliveryRepository extends JpaRepository<CustomerDelive
             @Param("deliveryPersonId") Long deliveryPersonId,
             @Param("deliveryDate") LocalDate deliveryDate);
 
+    // Report: filter by deliveryPersonId + date range
+    @Query("SELECT NEW com.wom.milkmgmt.dto.CustomerDeliveryResponseDTO(" +
+            "cd.id, " +
+            "cd.customer.id, " +
+            "cd.customerName, " +
+            "cd.deliveryPerson.id, " +
+            "cd.deliveryPersonName, " +
+            "cd.milkTypeId, " +
+            "cd.milkTypeName, " +
+            "cd.volumeMl, " +
+            "cd.askedQuantity, " +
+            "cd.askedQuantity, " +
+            "cd.deliveredQuantity, " +
+            "cd.unitPriceSnapshot, " +
+            "cd.totalPrice, " +
+            "cd.deliveryDate, " +
+            "cd.status) " +
+            "FROM CustomerDelivery cd " +
+            "WHERE cd.deliveryPerson.id = :deliveryPersonId " +
+            "AND cd.deliveryDate BETWEEN :fromDate AND :toDate " +
+            "ORDER BY cd.deliveryDate ASC")
+    List<CustomerDeliveryResponseDTO> findReportByDeliveryPersonAndDateRange(
+            @Param("deliveryPersonId") Long deliveryPersonId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate);
 
 }

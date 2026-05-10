@@ -11,6 +11,7 @@ import com.wom.milkmgmt.repository.MilkDeliveryOrderRepository;
 import com.wom.milkmgmt.repository.MilkTypeRepository;
 import com.wom.milkmgmt.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MilkDeliveryOrderService {
@@ -29,117 +31,115 @@ public class MilkDeliveryOrderService {
     private final UserRepository userRepository;
     private final MilkTypeRepository milkTypeRepository;
 
-    // CREATE
     public MilkDeliveryOrder create(MilkDeliveryOrderDTO dto) {
+        log.info("Creating order for deliveryPersonId: {}, milkTypeId: {}", dto.getDeliveryPersonId(), dto.getMilkTypeId());
         User deliveryPerson = userRepository.findById(dto.getDeliveryPersonId())
-                .orElseThrow(() -> new RuntimeException(
-                        "User not found: " + dto.getDeliveryPersonId()));
-
+                .orElseThrow(() -> new RuntimeException("User not found: " + dto.getDeliveryPersonId()));
         MilkType milkType = milkTypeRepository.findById(dto.getMilkTypeId())
-                .orElseThrow(() -> new RuntimeException(
-                        "MilkType not found: " + dto.getMilkTypeId()));
-
+                .orElseThrow(() -> new RuntimeException("MilkType not found: " + dto.getMilkTypeId()));
         MilkDeliveryOrder order = new MilkDeliveryOrder();
         order.setDeliveryPerson(deliveryPerson);
         order.setMilkType(milkType);
         order.setUnitPriceSnapshot(milkType.getPricePerUnit());
         order.setAskedQuantity(dto.getAskedQuantity());
-        // snapshot price now
-        order.setOrderDate(LocalDate.now());                    // today's date
+        order.setOrderDate(LocalDate.now());
         order.setStatus("pending");
         order.setCreatedAt(LocalDateTime.now());
-        order.setTotalPrice(
-                milkType.getPricePerUnit()
-                        .multiply(BigDecimal.valueOf(dto.getAskedQuantity()))
-        );
-
-        return orderRepository.save(order);
+        order.setTotalPrice(milkType.getPricePerUnit().multiply(BigDecimal.valueOf(dto.getAskedQuantity())));
+        MilkDeliveryOrder saved = orderRepository.save(order);
+        log.info("Order created with id: {}", saved.getId());
+        return saved;
     }
 
-    // READ ALL
     public List<MilkDeliveryOrder> getAll() {
+        log.info("Fetching all milk delivery orders");
         return orderRepository.findAll();
     }
 
-    // READ ONE
     public MilkDeliveryOrder getById(Long id) {
+        log.info("Fetching order id: {}", id);
         return orderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Order not found: " + id));
     }
 
-    // UPDATE
     public MilkDeliveryOrder update(Long id, MilkDeliveryOrderDTO dto) {
+        log.info("Updating order id: {}", id);
         MilkDeliveryOrder order = getById(id);
-
         User deliveryPerson = userRepository.findById(dto.getDeliveryPersonId())
-                .orElseThrow(() -> new RuntimeException(
-                        "User not found: " + dto.getDeliveryPersonId()));
-
+                .orElseThrow(() -> new RuntimeException("User not found: " + dto.getDeliveryPersonId()));
         MilkType milkType = milkTypeRepository.findById(dto.getMilkTypeId())
-                .orElseThrow(() -> new RuntimeException(
-                        "MilkType not found: " + dto.getMilkTypeId()));
-
+                .orElseThrow(() -> new RuntimeException("MilkType not found: " + dto.getMilkTypeId()));
         order.setDeliveryPerson(deliveryPerson);
         order.setMilkType(milkType);
         order.setUnitPriceSnapshot(milkType.getPricePerUnit());
         order.setAskedQuantity(dto.getAskedQuantity());
-        order.setTotalPrice(
-                milkType.getPricePerUnit()
-                        .multiply(BigDecimal.valueOf(dto.getAskedQuantity()))
-        );
-
-        // re-snapshot on update
-        // order_date and created_at are NOT changed on update
-
-        return orderRepository.save(order);
+        order.setTotalPrice(milkType.getPricePerUnit().multiply(BigDecimal.valueOf(dto.getAskedQuantity())));
+        MilkDeliveryOrder updated = orderRepository.save(order);
+        log.info("Order updated id: {}", id);
+        return updated;
     }
 
-    // DELETE
     public void delete(Long id) {
+        log.info("Deleting order id: {}", id);
         if (!orderRepository.existsById(id)) {
             throw new RuntimeException("Order not found: " + id);
         }
         orderRepository.deleteById(id);
+        log.info("Order deleted id: {}", id);
+    }
+
+    @Transactional
+    public List<MilkDeliveryOrder> bulkUpdateQuantity(List<BulkQuantityUpdateDTO> updates) {
+        log.info("Bulk updating {} orders", updates.size());
+        List<MilkDeliveryOrder> updatedOrders = new ArrayList<>();
+        for (BulkQuantityUpdateDTO update : updates) {
+            List<MilkDeliveryOrder> orders = orderRepository
+                    .findByDeliveryPersonIdAndMilkTypeId(update.getDeliveryPersonId(), update.getMilkTypeId());
+            if (orders.isEmpty()) {
+                throw new RuntimeException(
+                        "No order found for deliveryPersonId=" + update.getDeliveryPersonId()
+                        + " and milkTypeId=" + update.getMilkTypeId());
+            }
+            MilkDeliveryOrder order = orders.get(0);
+            order.setAskedQuantity(update.getAskedQuantity());
+            order.setOrderDate(update.getOrderDate() != null ? update.getOrderDate() : order.getOrderDate());
+            order.setTotalPrice(order.getUnitPriceSnapshot().multiply(BigDecimal.valueOf(update.getAskedQuantity())));
+            updatedOrders.add(orderRepository.save(order));
+        }
+        log.info("Bulk update completed for {} orders", updatedOrders.size());
+        return updatedOrders;
     }
 
     public List<MilkDeliveryOrder> getOrdersByPersonAndDate(Long deliveryPersonId, LocalDate orderDate) {
+        log.info("Fetching orders for deliveryPersonId: {}, date: {}", deliveryPersonId, orderDate);
         return orderRepository.findByDeliveryPersonIdAndOrderDate(deliveryPersonId, orderDate);
     }
 
-    // GET ALL ORDERS BY ORDER DATE WITH DETAILED INFORMATION
     public List<MilkDeliveryOrderDetailDTO> getOrdersByDate(LocalDate orderDate) {
+        log.info("Fetching orders by date: {}", orderDate);
         List<MilkDeliveryOrder> orders = orderDate != null
                 ? orderRepository.findByOrderDate(orderDate)
                 : orderRepository.findAll();
-
-        return orders.stream()
-                .map(this::convertToDetailDTO)
-                .collect(Collectors.toList());
+        return orders.stream().map(this::convertToDetailDTO).collect(Collectors.toList());
     }
 
-    // GET ALL ORDERS BY DELIVERY PERSON ID WITH OPTIONAL DATE FILTER
     public List<MilkDeliveryOrderDetailDTO> getOrdersByDeliveryPerson(Long deliveryPersonId, LocalDate orderDate) {
+        log.info("Fetching orders for deliveryPersonId: {}, date: {}", deliveryPersonId, orderDate);
         List<MilkDeliveryOrder> orders = orderDate != null
                 ? orderRepository.findByDeliveryPersonIdAndOrderDate(deliveryPersonId, orderDate)
                 : orderRepository.findByDeliveryPersonId(deliveryPersonId);
-
-        return orders.stream()
-                .map(this::convertToDetailDTO)
-                .collect(Collectors.toList());
+        return orders.stream().map(this::convertToDetailDTO).collect(Collectors.toList());
     }
 
-    // GET ALL DELIVERY PERSONS (DISTINCT FROM ORDERS)
     public List<DeliveryPersonDTO> getAllDeliveryPersons() {
-        List<MilkDeliveryOrder> allOrders = orderRepository.findAll();
-        
-        return allOrders.stream()
+        log.info("Fetching all distinct delivery persons from orders");
+        return orderRepository.findAll().stream()
                 .map(MilkDeliveryOrder::getDeliveryPerson)
                 .distinct()
                 .map(this::convertToDeliveryPersonDTO)
                 .collect(Collectors.toList());
     }
 
-    // Helper method to convert entity to detailed DTO
     private MilkDeliveryOrderDetailDTO convertToDetailDTO(MilkDeliveryOrder order) {
         MilkDeliveryOrderDetailDTO dto = new MilkDeliveryOrderDetailDTO();
         dto.setOrderId(order.getId());
@@ -158,7 +158,6 @@ public class MilkDeliveryOrderService {
         return dto;
     }
 
-    // Helper method to convert User to DeliveryPersonDTO
     private DeliveryPersonDTO convertToDeliveryPersonDTO(User user) {
         DeliveryPersonDTO dto = new DeliveryPersonDTO();
         dto.setDeliveryPersonId(user.getId());
@@ -166,37 +165,5 @@ public class MilkDeliveryOrderService {
         dto.setDeliveryPersonEmail(user.getEmail());
         dto.setDeliveryPersonPhone(user.getPhoneNumber());
         return dto;
-    }
-
-    // BULK UPDATE - update askedQuantity for multiple delivery persons
-    @Transactional
-    public List<MilkDeliveryOrder> bulkUpdateQuantity(List<BulkQuantityUpdateDTO> updates) {
-        List<MilkDeliveryOrder> updatedOrders = new ArrayList<>();
-
-        for (BulkQuantityUpdateDTO update : updates) {
-            // find the most recent order for this deliveryPerson + milkType combination
-            List<MilkDeliveryOrder> orders = orderRepository
-                    .findByDeliveryPersonIdAndMilkTypeId(update.getDeliveryPersonId(), update.getMilkTypeId());
-
-            if (orders.isEmpty()) {
-                throw new RuntimeException(
-                        "No order found for deliveryPersonId=" + update.getDeliveryPersonId()
-                        + " and milkTypeId=" + update.getMilkTypeId());
-            }
-
-            // take the latest order (last in list)
-            MilkDeliveryOrder order = orders.get(orders.size() - 1);
-
-            order.setAskedQuantity(update.getAskedQuantity());
-            order.setOrderDate(update.getOrderDate() != null ? update.getOrderDate() : order.getOrderDate());
-            order.setTotalPrice(
-                    order.getUnitPriceSnapshot()
-                            .multiply(BigDecimal.valueOf(update.getAskedQuantity()))
-            );
-
-            updatedOrders.add(orderRepository.save(order));
-        }
-
-        return updatedOrders;
     }
 }

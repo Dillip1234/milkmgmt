@@ -57,7 +57,16 @@ public class CustomerDeliveryController {
 
         return service.getDeliveriesByPersonIdAndDate(deliveryPersonId, deliveryDate);
     }
-    @PutMapping("/submit")
+    @GetMapping("/report")
+    public ResponseEntity<List<CustomerDeliveryResponseDTO>> getReport(
+            @RequestParam Long deliveryPersonId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        //log.info("Report request for deliveryPersonId: {}, from: {}, to: {}", deliveryPersonId, fromDate, toDate);
+        return ResponseEntity.ok(service.getReport(deliveryPersonId, fromDate, toDate));
+    }
+
+    @PostMapping("/submit")
     public ResponseEntity<String> submitDeliveries(@RequestBody DeliverySubmitRequest request) {
         service.submitDeliveries(request);
         return ResponseEntity.ok("Deliveries updated successfully");
