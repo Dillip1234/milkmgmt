@@ -93,6 +93,23 @@ public class MilkDeliveryOrderService {
         log.info("Bulk updating {} orders", updates.size());
         List<MilkDeliveryOrder> updatedOrders = new ArrayList<>();
         for (BulkQuantityUpdateDTO update : updates) {
+
+            // skip if askedQuantity is 0 (DB constraint requires asked_quantity > 0)
+            if (update.getAskedQuantity() == null || update.getAskedQuantity() == 0) {
+                log.info("Skipping update for deliveryPersonId={} milkTypeId={} — askedQuantity is 0",
+                        update.getDeliveryPersonId(), update.getMilkTypeId());
+                continue;
+            }
+
+            // validate askedQuantity must be >= 1
+            if (update.getAskedQuantity() < 0) {
+                throw new RuntimeException(
+                        "Invalid askedQuantity=" + update.getAskedQuantity()
+                        + " for deliveryPersonId=" + update.getDeliveryPersonId()
+                        + " and milkTypeId=" + update.getMilkTypeId()
+                        + ". Value must be 0 or greater.");
+            }
+
             List<MilkDeliveryOrder> orders = orderRepository
                     .findByDeliveryPersonIdAndMilkTypeId(update.getDeliveryPersonId(), update.getMilkTypeId());
             if (orders.isEmpty()) {

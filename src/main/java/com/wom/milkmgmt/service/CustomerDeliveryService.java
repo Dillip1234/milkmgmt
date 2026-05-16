@@ -10,6 +10,7 @@ import com.wom.milkmgmt.repository.MilkDeliveryOrderRepository;
 import com.wom.milkmgmt.repository.MilkTypeRepository;
 import com.wom.milkmgmt.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class CustomerDeliveryService {
 
@@ -185,8 +187,87 @@ public class CustomerDeliveryService {
     }
 
     public List<CustomerDeliveryResponseDTO> getReport(Long deliveryPersonId, LocalDate fromDate, LocalDate toDate) {
-        //log.info("Generating report for deliveryPersonId: {}, from: {}, to: {}", deliveryPersonId, fromDate, toDate);
+       // log.info("Generating report for deliveryPersonId: {}, from: {}, to: {}", deliveryPersonId, fromDate, toDate);
         return deliveryRepo.findReportByDeliveryPersonAndDateRange(deliveryPersonId, fromDate, toDate);
+    }
+
+    public byte[] downloadReportAsExcel(Long deliveryPersonId, LocalDate fromDate, LocalDate toDate) {
+        log.info("Generating Excel report for deliveryPersonId: {}, from: {}, to: {}", deliveryPersonId, fromDate, toDate);
+
+        List<CustomerDeliveryResponseDTO> data = deliveryRepo
+                .findReportByDeliveryPersonAndDateRange(deliveryPersonId, fromDate, toDate);
+
+        log.info("Excel report data size: {} rows", data.size());
+
+        String deliveryPersonName = userRepo.findById(deliveryPersonId)
+                .map(u -> u.getUsername())
+                .orElse("Delivery Person " + deliveryPersonId);
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.xssf.usermodel.XSSFSheet sheet = workbook.createSheet("Delivery Report");
+
+            // ── Title row: delivery person name, centered, grey, bold ──
+            org.apache.poi.xssf.usermodel.XSSFCellStyle titleStyle = workbook.createCellStyle();
+            titleStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
+            titleStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(
+                    new byte[]{(byte) 169, (byte) 169, (byte) 169}, null));
+            titleStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+            org.apache.poi.xssf.usermodel.XSSFFont titleFont = workbook.createFont();
+            titleFont.setBold(true);
+            titleFont.setFontHeightInPoints((short) 14);
+            titleStyle.setFont(titleFont);
+
+            org.apache.poi.xssf.usermodel.XSSFRow titleRow = sheet.createRow(0);
+            org.apache.poi.xssf.usermodel.XSSFCell titleCell = titleRow.createCell(0);
+            titleCell.setCellValue(deliveryPersonName);
+            titleCell.setCellStyle(titleStyle);
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, 5));
+
+            // ── Header row: light blue background, bold ──
+            org.apache.poi.xssf.usermodel.XSSFCellStyle headerStyle = workbook.createCellStyle();
+            headerStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(
+                    new byte[]{(byte) 173, (byte) 216, (byte) 230}, null));
+            headerStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+            org.apache.poi.xssf.usermodel.XSSFFont headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+
+            String[] headers = {"Serial No", "Customer Name", "Asked Quantity", "Delivered Quantity", "Price", "Date"};
+            org.apache.poi.xssf.usermodel.XSSFRow headerRow = sheet.createRow(1);
+            for (int i = 0; i < headers.length; i++) {
+                org.apache.poi.xssf.usermodel.XSSFCell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // ── Data rows ──
+            int rowNum = 2;
+            int serial = 1;
+            for (CustomerDeliveryResponseDTO dto : data) {
+                org.apache.poi.xssf.usermodel.XSSFRow row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(serial++);
+                row.createCell(1).setCellValue(dto.getCustomerName() != null ? dto.getCustomerName() : "");
+                row.createCell(2).setCellValue(dto.getAskedQuantity() != null ? dto.getAskedQuantity() : 0);
+                row.createCell(3).setCellValue(dto.getDeliveredQuantity() != null ? dto.getDeliveredQuantity() : 0);
+                row.createCell(4).setCellValue(dto.getTotalPrice() != null ? dto.getTotalPrice().doubleValue() : 0);
+                row.createCell(5).setCellValue(dto.getDeliveryDate() != null ? dto.getDeliveryDate().toString() : "");
+            }
+
+            // auto-size all columns
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            workbook.write(out);
+            return out.toByteArray();
+
+        } catch (Exception e) {
+            log.error("Error generating Excel report: {}", e.getMessage());
+            throw new RuntimeException("Failed to generate Excel report: " + e.getMessage());
+        }
     }
 
     @Transactional
@@ -318,10 +399,10 @@ public class CustomerDeliveryService {
                     "Date is not matching. You can only save deliveries for today's date.");
         }
 
-        // Step 1: build map of customer_id → deliveredQuantity from payload
-        Map<Long, Integer> payloadQuantityMap = new HashMap<>();
+        // Step 1: build map of customer_id → item (for quantity + optional milkTypeId override)
+        Map<Long, DeliverySubmitRequest.CustomerDeliveryItem> payloadMap = new HashMap<>();
         for (DeliverySubmitRequest.CustomerDeliveryItem item : request.getDeliveries()) {
-            payloadQuantityMap.put(item.getCustomerDeliveryId(), item.getDeliveredQuantity());
+            payloadMap.put(item.getCustomerDeliveryId(), item);
         }
 
         // Step 2: fetch ALL customer_deliveries for this delivery person on this date
@@ -329,17 +410,25 @@ public class CustomerDeliveryService {
                 .findByDeliveryPersonIdAndDeliveryDate(deliveryPersonId, deliveryDate);
 
         // Step 3: aggregate total delivered quantity per milk_type_id
-        // use payload quantity if provided, else existing delivered_quantity
+        // if payload has a milkTypeId override for this customer, use that milkTypeId for aggregation
         Map<Long, Integer> milkTypeTotalMap = new HashMap<>();
         for (CustomerDelivery cd : existingDeliveries) {
-            Long milkTypeId = cd.getMilkTypeId();
-            if (milkTypeId == null) continue;
+            Long customerId = cd.getCustomer().getId();
+            DeliverySubmitRequest.CustomerDeliveryItem payloadItem = payloadMap.get(customerId);
 
-            Integer qty = payloadQuantityMap.getOrDefault(
-                    cd.getCustomer().getId(),
-                    cd.getDeliveredQuantity() != null ? cd.getDeliveredQuantity() : 0
-            );
-            milkTypeTotalMap.merge(milkTypeId, qty, Integer::sum);
+            // determine effective milkTypeId — use payload override if provided, else existing
+            Long effectiveMilkTypeId = (payloadItem != null && payloadItem.getMilkTypeId() != null)
+                    ? payloadItem.getMilkTypeId()
+                    : cd.getMilkTypeId();
+
+            if (effectiveMilkTypeId == null) continue;
+
+            // determine effective quantity — use payload if provided, else existing
+            Integer qty = (payloadItem != null)
+                    ? payloadItem.getDeliveredQuantity()
+                    : (cd.getDeliveredQuantity() != null ? cd.getDeliveredQuantity() : 0);
+
+            milkTypeTotalMap.merge(effectiveMilkTypeId, qty, Integer::sum);
         }
 
         // Step 4: fetch milk_delivery_orders for this delivery person on this date
@@ -352,23 +441,43 @@ public class CustomerDeliveryService {
                     + " and date=" + deliveryDate + ". Please run /submit first.");
         }
 
-        // Step 5: validate each milk_type_id total against asked_quantity in milk_delivery_orders
+        // Build map of milkTypeId → asked_quantity from milk_delivery_orders
+        Map<Long, Integer> ordersAskedQuantityMap = new HashMap<>();
         for (MilkDeliveryOrder order : orders) {
-            Long milkTypeId = order.getMilkType().getId();
-            String milkTypeName = order.getMilkType().getName();
-            Integer totalDelivered = milkTypeTotalMap.getOrDefault(milkTypeId, 0);
+            ordersAskedQuantityMap.put(order.getMilkType().getId(), order.getAskedQuantity());
+        }
 
-            if (!totalDelivered.equals(order.getAskedQuantity())) {
+        // Step 5: validate — payload milkTypeId + total delivered quantity must match milk_delivery_orders
+        // milkTypeTotalMap already uses payload milkTypeId as priority
+        for (Map.Entry<Long, Integer> entry : milkTypeTotalMap.entrySet()) {
+            Long milkTypeId = entry.getKey();
+            Integer totalDelivered = entry.getValue();
+
+            // check if this milkTypeId exists in milk_delivery_orders
+            if (!ordersAskedQuantityMap.containsKey(milkTypeId)) {
+                MilkType mt = milkTypeRepository.findById(milkTypeId)
+                        .orElseThrow(() -> new RuntimeException("MilkType not found: " + milkTypeId));
                 throw new RuntimeException(
-                        "Quantity mismatch for milk type '" + milkTypeName
+                        "Milk type '" + mt.getName() + "' (id=" + milkTypeId + ")"
+                        + " is not found in milk delivery orders for date=" + deliveryDate
+                        + ". Milk type mismatch.");
+            }
+
+            Integer askedQuantity = ordersAskedQuantityMap.get(milkTypeId);
+            if (!totalDelivered.equals(askedQuantity)) {
+                MilkType mt = milkTypeRepository.findById(milkTypeId)
+                        .orElseThrow(() -> new RuntimeException("MilkType not found: " + milkTypeId));
+                throw new RuntimeException(
+                        "Quantity mismatch for milk type '" + mt.getName()
                         + "' (id=" + milkTypeId + ")."
-                        + " Expected: " + order.getAskedQuantity()
+                        + " Expected: " + askedQuantity
                         + ", Got: " + totalDelivered
                 );
             }
         }
 
-        // Validation passed — update customer_deliveries: delivered_quantity + status
+        // Validation passed — update customer_deliveries with delivered_quantity,
+        // milkTypeId (if changed), and status = "delivered"
         for (DeliverySubmitRequest.CustomerDeliveryItem item : request.getDeliveries()) {
             List<CustomerDelivery> cdList = deliveryRepo
                     .findByCustomerIdAndDeliveryPersonId(item.getCustomerDeliveryId(), deliveryPersonId);
@@ -379,8 +488,20 @@ public class CustomerDeliveryService {
             cd.setDeliveredQuantity(item.getDeliveredQuantity());
             cd.setStatus("delivered");
 
+            // if milkTypeId changed — update milk type snapshots
+            if (item.getMilkTypeId() != null && !item.getMilkTypeId().equals(cd.getMilkTypeId())) {
+                MilkType newMilkType = milkTypeRepository.findById(item.getMilkTypeId())
+                        .orElseThrow(() -> new RuntimeException("MilkType not found: " + item.getMilkTypeId()));
+                cd.setMilkTypeId(newMilkType.getId());
+                cd.setMilkTypeName(newMilkType.getName());
+                cd.setVolumeMl(newMilkType.getVolumeMl());
+                cd.setUnitPriceSnapshot(newMilkType.getPricePerUnit());
+                cd.setTotalPrice(newMilkType.getPricePerUnit()
+                        .multiply(BigDecimal.valueOf(item.getDeliveredQuantity())));
+                log.info("MilkType updated for customerId: {} → milkTypeId: {}", item.getCustomerDeliveryId(), item.getMilkTypeId());
+            }
+
             deliveryRepo.save(cd);
         }
     }
-
 }
