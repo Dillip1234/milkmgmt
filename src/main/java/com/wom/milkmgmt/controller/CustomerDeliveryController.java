@@ -73,9 +73,11 @@ public class CustomerDeliveryController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
         log.info("Excel download for deliveryPersonId: {}, from: {}, to: {}", deliveryPersonId, fromDate, toDate);
         byte[] excelBytes = service.downloadReportAsExcel(deliveryPersonId, fromDate, toDate);
+        String personName = service.getDeliveryPersonName(deliveryPersonId)
+                .replaceAll("[^a-zA-Z0-9]", "_"); // sanitize for filename
+        String fileName = personName + "_" + fromDate + "_" + toDate + ".xlsx";
         return ResponseEntity.ok()
-                .header("Content-Disposition",
-                        "attachment; filename=delivery_report_" + deliveryPersonId + "_" + fromDate + "_to_" + toDate + ".xlsx")
+                .header("Content-Disposition", "attachment; filename=" + fileName)
                 .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .body(excelBytes);
     }

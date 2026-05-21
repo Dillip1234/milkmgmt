@@ -187,8 +187,14 @@ public class CustomerDeliveryService {
     }
 
     public List<CustomerDeliveryResponseDTO> getReport(Long deliveryPersonId, LocalDate fromDate, LocalDate toDate) {
-       // log.info("Generating report for deliveryPersonId: {}, from: {}, to: {}", deliveryPersonId, fromDate, toDate);
+        log.info("Generating report for deliveryPersonId: {}, from: {}, to: {}", deliveryPersonId, fromDate, toDate);
         return deliveryRepo.findReportByDeliveryPersonAndDateRange(deliveryPersonId, fromDate, toDate);
+    }
+
+    public String getDeliveryPersonName(Long deliveryPersonId) {
+        return userRepo.findById(deliveryPersonId)
+                .map(u -> u.getUsername())
+                .orElse("delivery_person_" + deliveryPersonId);
     }
 
     public byte[] downloadReportAsExcel(Long deliveryPersonId, LocalDate fromDate, LocalDate toDate) {
@@ -203,65 +209,166 @@ public class CustomerDeliveryService {
                 .map(u -> u.getUsername())
                 .orElse("Delivery Person " + deliveryPersonId);
 
-        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb =
                      new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
 
-            org.apache.poi.xssf.usermodel.XSSFSheet sheet = workbook.createSheet("Delivery Report");
+            org.apache.poi.xssf.usermodel.XSSFSheet sheet = wb.createSheet("Delivery Report");
 
-            // ── Title row: delivery person name, centered, grey, bold ──
-            org.apache.poi.xssf.usermodel.XSSFCellStyle titleStyle = workbook.createCellStyle();
-            titleStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
-            titleStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(
-                    new byte[]{(byte) 169, (byte) 169, (byte) 169}, null));
-            titleStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
-            org.apache.poi.xssf.usermodel.XSSFFont titleFont = workbook.createFont();
-            titleFont.setBold(true);
-            titleFont.setFontHeightInPoints((short) 14);
-            titleStyle.setFont(titleFont);
+            // ── Collect all distinct dates in range ──
+            java.util.List<LocalDate> dates = new java.util.ArrayList<>();
+            LocalDate d = fromDate;
+            while (!d.isAfter(toDate)) {
+                dates.add(d);
+                d = d.plusDays(1);
+            }
 
-            org.apache.poi.xssf.usermodel.XSSFRow titleRow = sheet.createRow(0);
-            org.apache.poi.xssf.usermodel.XSSFCell titleCell = titleRow.createCell(0);
-            titleCell.setCellValue(deliveryPersonName);
-            titleCell.setCellStyle(titleStyle);
-            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 0, 5));
+            // ── Collect distinct customers (name + milkType) ──
+            // key = customerName + "|" + milkTypeName, value = map of date → deliveredQty
+            java.util.LinkedHashMap<String, java.util.Map<LocalDate, Integer>> customerDateMap = new java.util.LinkedHashMap<>();
+            java.util.Map<String, String> customerMilkTypeMap = new java.util.LinkedHashMap<>();
+            java.util.Map<String, java.math.BigDecimal> customerUnitPriceMap = new java.util.LinkedHashMap<>();
 
-            // ── Header row: light blue background, bold ──
-            org.apache.poi.xssf.usermodel.XSSFCellStyle headerStyle = workbook.createCellStyle();
-            headerStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(
-                    new byte[]{(byte) 173, (byte) 216, (byte) 230}, null));
+            for (CustomerDeliveryResponseDTO dto : data) {
+                String key = dto.getCustomerName() + "|" + dto.getMilkTypeName();
+                customerMilkTypeMap.put(key, dto.getMilkTypeName());
+                customerUnitPriceMap.put(key, dto.getUnitPriceSnapshot() != null ? dto.getUnitPriceSnapshot() : java.math.BigDecimal.ZERO);
+                customerDateMap.computeIfAbsent(key, k -> new java.util.HashMap<>())
+                        .put(dto.getDeliveryDate(), dto.getDeliveredQuantity() != null ? dto.getDeliveredQuantity() : 0);
+            }
+
+            // ── Styles ──
+            // Green style for "Report"
+            org.apache.poi.xssf.usermodel.XSSFCellStyle greenStyle = wb.createCellStyle();
+            greenStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(new byte[]{(byte)0, (byte)128, (byte)0}, null));
+            greenStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+            org.apache.poi.xssf.usermodel.XSSFFont boldWhite = wb.createFont();
+            boldWhite.setBold(true);
+            boldWhite.setColor(new org.apache.poi.xssf.usermodel.XSSFColor(new byte[]{(byte)255,(byte)255,(byte)255}, null));
+            greenStyle.setFont(boldWhite);
+
+            // Orange style
+            org.apache.poi.xssf.usermodel.XSSFCellStyle orangeStyle = wb.createCellStyle();
+            orangeStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(new byte[]{(byte)210,(byte)105,(byte)30}, null));
+            orangeStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+            org.apache.poi.xssf.usermodel.XSSFFont boldFont = wb.createFont();
+            boldFont.setBold(true);
+            orangeStyle.setFont(boldFont);
+
+            // Yellow style for Month
+            org.apache.poi.xssf.usermodel.XSSFCellStyle yellowStyle = wb.createCellStyle();
+            yellowStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(new byte[]{(byte)255,(byte)255,(byte)0}, null));
+            yellowStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+
+            // Orange header style (row 6)
+            org.apache.poi.xssf.usermodel.XSSFCellStyle headerStyle = wb.createCellStyle();
+            headerStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(new byte[]{(byte)210,(byte)105,(byte)30}, null));
             headerStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
-            org.apache.poi.xssf.usermodel.XSSFFont headerFont = workbook.createFont();
+            org.apache.poi.xssf.usermodel.XSSFFont headerFont = wb.createFont();
             headerFont.setBold(true);
             headerStyle.setFont(headerFont);
 
-            String[] headers = {"Serial No", "Customer Name", "Asked Quantity", "Delivered Quantity", "Price", "Date"};
-            org.apache.poi.xssf.usermodel.XSSFRow headerRow = sheet.createRow(1);
-            for (int i = 0; i < headers.length; i++) {
-                org.apache.poi.xssf.usermodel.XSSFCell cell = headerRow.createCell(i);
-                cell.setCellValue(headers[i]);
-                cell.setCellStyle(headerStyle);
+            // Total style (orange-red)
+            org.apache.poi.xssf.usermodel.XSSFCellStyle totalStyle = wb.createCellStyle();
+            totalStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(new byte[]{(byte)255,(byte)140,(byte)0}, null));
+            totalStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+            org.apache.poi.xssf.usermodel.XSSFFont totalFont = wb.createFont();
+            totalFont.setBold(true);
+            totalStyle.setFont(totalFont);
+
+            // ── Row 1: Report ──
+            org.apache.poi.xssf.usermodel.XSSFRow row1 = sheet.createRow(0);
+            org.apache.poi.xssf.usermodel.XSSFCell reportCell = row1.createCell(0);
+            reportCell.setCellValue("Report");
+            reportCell.setCellStyle(greenStyle);
+
+            // ── Row 2: Start Date ──
+            org.apache.poi.xssf.usermodel.XSSFRow row2 = sheet.createRow(1);
+            org.apache.poi.xssf.usermodel.XSSFCell sdLabel = row2.createCell(1);
+            sdLabel.setCellValue("Start Date");
+            sdLabel.setCellStyle(orangeStyle);
+            row2.createCell(2).setCellValue(fromDate.toString());
+            row2.createCell(3).setCellValue(toDate.toString());
+
+            // ── Row 3: Delivery Person ──
+            org.apache.poi.xssf.usermodel.XSSFRow row3 = sheet.createRow(2);
+            org.apache.poi.xssf.usermodel.XSSFCell dpLabel = row3.createCell(1);
+            dpLabel.setCellValue("Delivery Person");
+            dpLabel.setCellStyle(orangeStyle);
+            row3.createCell(2).setCellValue(deliveryPersonName);
+
+            // ── Row 4: Month ──
+            org.apache.poi.xssf.usermodel.XSSFRow row4 = sheet.createRow(3);
+            org.apache.poi.xssf.usermodel.XSSFCell monthLabel = row4.createCell(1);
+            monthLabel.setCellValue("Month");
+            monthLabel.setCellStyle(orangeStyle);
+            org.apache.poi.xssf.usermodel.XSSFCell monthValue = row4.createCell(2);
+            monthValue.setCellValue(fromDate.getMonth().getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH));
+            monthValue.setCellStyle(yellowStyle);
+
+            // ── Row 5: empty ──
+            sheet.createRow(4);
+
+            // ── Row 6: Header — Customer Name | Milk Type | date1 | date2 | ... | Total ──
+            org.apache.poi.xssf.usermodel.XSSFRow headerRow = sheet.createRow(5);
+            org.apache.poi.xssf.usermodel.XSSFCell cnHeader = headerRow.createCell(1);
+            cnHeader.setCellValue("Customer Name");
+            cnHeader.setCellStyle(headerStyle);
+            org.apache.poi.xssf.usermodel.XSSFCell mtHeader = headerRow.createCell(2);
+            mtHeader.setCellValue("Milk Type");
+            mtHeader.setCellStyle(headerStyle);
+
+            int colOffset = 3;
+            for (int i = 0; i < dates.size(); i++) {
+                org.apache.poi.xssf.usermodel.XSSFCell dateCell = headerRow.createCell(colOffset + i);
+                dateCell.setCellValue(dates.get(i).getDayOfMonth()); // show day number
+                dateCell.setCellStyle(headerStyle);
             }
+            org.apache.poi.xssf.usermodel.XSSFCell totalHeader = headerRow.createCell(colOffset + dates.size());
+            totalHeader.setCellValue("Total Qty");
+            totalHeader.setCellStyle(totalStyle);
+            org.apache.poi.xssf.usermodel.XSSFCell totalPriceHeader = headerRow.createCell(colOffset + dates.size() + 1);
+            totalPriceHeader.setCellValue("Total Price");
+            totalPriceHeader.setCellStyle(totalStyle);
 
             // ── Data rows ──
-            int rowNum = 2;
-            int serial = 1;
-            for (CustomerDeliveryResponseDTO dto : data) {
-                org.apache.poi.xssf.usermodel.XSSFRow row = sheet.createRow(rowNum++);
-                row.createCell(0).setCellValue(serial++);
-                row.createCell(1).setCellValue(dto.getCustomerName() != null ? dto.getCustomerName() : "");
-                row.createCell(2).setCellValue(dto.getAskedQuantity() != null ? dto.getAskedQuantity() : 0);
-                row.createCell(3).setCellValue(dto.getDeliveredQuantity() != null ? dto.getDeliveredQuantity() : 0);
-                row.createCell(4).setCellValue(dto.getTotalPrice() != null ? dto.getTotalPrice().doubleValue() : 0);
-                row.createCell(5).setCellValue(dto.getDeliveryDate() != null ? dto.getDeliveryDate().toString() : "");
+            int rowNum = 6;
+            for (java.util.Map.Entry<String, java.util.Map<LocalDate, Integer>> entry : customerDateMap.entrySet()) {
+                String key = entry.getKey();
+                String[] parts = key.split("\\|", 2);
+                String customerName = parts[0];
+                String milkTypeName = parts.length > 1 ? parts[1] : "";
+                java.util.Map<LocalDate, Integer> dateQtyMap = entry.getValue();
+                java.math.BigDecimal unitPrice = customerUnitPriceMap.getOrDefault(key, java.math.BigDecimal.ZERO);
+
+                org.apache.poi.xssf.usermodel.XSSFRow dataRow = sheet.createRow(rowNum++);
+                dataRow.createCell(1).setCellValue(customerName);
+                dataRow.createCell(2).setCellValue(milkTypeName);
+
+                int total = 0;
+                for (int i = 0; i < dates.size(); i++) {
+                    int qty = dateQtyMap.getOrDefault(dates.get(i), 0);
+                    dataRow.createCell(colOffset + i).setCellValue(qty);
+                    total += qty;
+                }
+                org.apache.poi.xssf.usermodel.XSSFCell totalCell = dataRow.createCell(colOffset + dates.size());
+                totalCell.setCellValue(total);
+                totalCell.setCellStyle(totalStyle);
+
+                // Total Price = total qty * unit price from milk_types
+                java.math.BigDecimal totalPrice = unitPrice.multiply(java.math.BigDecimal.valueOf(total));
+                org.apache.poi.xssf.usermodel.XSSFCell totalPriceCell = dataRow.createCell(colOffset + dates.size() + 1);
+                totalPriceCell.setCellValue(totalPrice.doubleValue());
+                totalPriceCell.setCellStyle(totalStyle);
             }
 
-            // auto-size all columns
-            for (int i = 0; i < headers.length; i++) {
+            // ── Auto-size columns ──
+            int totalCols = colOffset + dates.size() + 2; // +2 for Total Qty and Total Price
+            for (int i = 0; i < totalCols; i++) {
                 sheet.autoSizeColumn(i);
             }
 
             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-            workbook.write(out);
+            wb.write(out);
             return out.toByteArray();
 
         } catch (Exception e) {
@@ -368,7 +475,7 @@ public class CustomerDeliveryService {
             Long milkTypeId = entry.getKey();
             Integer totalQuantity = entry.getValue();
 
-            if (totalQuantity <= 0) continue; // skip — violates asked_quantity > 0 constraint
+            // allow 0 quantity — DB constraint has been updated to >= 0
 
             MilkType milkType = milkTypeRepository.findById(milkTypeId)
                     .orElseThrow(() -> new RuntimeException("MilkType not found: " + milkTypeId));
@@ -476,30 +583,40 @@ public class CustomerDeliveryService {
             }
         }
 
-        // Validation passed — update customer_deliveries with delivered_quantity,
-        // milkTypeId (if changed), and status = "delivered"
+        // Validation passed — persist milkTypeId, milkTypeName, deliveredQuantity, status = "delivered"
         for (DeliverySubmitRequest.CustomerDeliveryItem item : request.getDeliveries()) {
+            // find the row for this customer + delivery person + delivery date specifically
             List<CustomerDelivery> cdList = deliveryRepo
-                    .findByCustomerIdAndDeliveryPersonId(item.getCustomerDeliveryId(), deliveryPersonId);
+                    .findByCustomerIdAndDeliveryPersonIdAndDeliveryDate(
+                            item.getCustomerDeliveryId(), deliveryPersonId, deliveryDate);
 
-            if (cdList.isEmpty()) continue;
+            if (cdList.isEmpty()) {
+                log.warn("No customer_deliveries row found for customerId: {}, deliveryPersonId: {}, date: {}",
+                        item.getCustomerDeliveryId(), deliveryPersonId, deliveryDate);
+                continue;
+            }
 
             CustomerDelivery cd = cdList.get(0);
+
+            // determine effective milkType — use payload if provided, else keep existing
+            Long effectiveMilkTypeId = item.getMilkTypeId() != null ? item.getMilkTypeId() : cd.getMilkTypeId();
+
+            if (effectiveMilkTypeId != null) {
+                MilkType milkType = milkTypeRepository.findById(effectiveMilkTypeId)
+                        .orElseThrow(() -> new RuntimeException("MilkType not found: " + effectiveMilkTypeId));
+                cd.setMilkTypeId(milkType.getId());
+                cd.setMilkTypeName(milkType.getName());
+                cd.setVolumeMl(milkType.getVolumeMl());
+                cd.setUnitPriceSnapshot(milkType.getPricePerUnit());
+                cd.setTotalPrice(milkType.getPricePerUnit()
+                        .multiply(BigDecimal.valueOf(item.getDeliveredQuantity())));
+            }
+
             cd.setDeliveredQuantity(item.getDeliveredQuantity());
             cd.setStatus("delivered");
 
-            // if milkTypeId changed — update milk type snapshots
-            if (item.getMilkTypeId() != null && !item.getMilkTypeId().equals(cd.getMilkTypeId())) {
-                MilkType newMilkType = milkTypeRepository.findById(item.getMilkTypeId())
-                        .orElseThrow(() -> new RuntimeException("MilkType not found: " + item.getMilkTypeId()));
-                cd.setMilkTypeId(newMilkType.getId());
-                cd.setMilkTypeName(newMilkType.getName());
-                cd.setVolumeMl(newMilkType.getVolumeMl());
-                cd.setUnitPriceSnapshot(newMilkType.getPricePerUnit());
-                cd.setTotalPrice(newMilkType.getPricePerUnit()
-                        .multiply(BigDecimal.valueOf(item.getDeliveredQuantity())));
-                log.info("MilkType updated for customerId: {} → milkTypeId: {}", item.getCustomerDeliveryId(), item.getMilkTypeId());
-            }
+            log.info("Saving customerId: {}, milkTypeId: {}, deliveredQty: {}, status: delivered",
+                    item.getCustomerDeliveryId(), effectiveMilkTypeId, item.getDeliveredQuantity());
 
             deliveryRepo.save(cd);
         }
